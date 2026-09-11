@@ -63,6 +63,7 @@ export default function Home() {
             Documentation
           </a>
         </div>
+        <p>secure: {String(typeof window !== 'undefined' && window.isSecureContext)}</p>
       </main>
     </div>
   );
