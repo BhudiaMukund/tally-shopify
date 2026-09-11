@@ -4,18 +4,26 @@ import { Bricolage_Grotesque, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/goo
 import "./globals.css";
 
 /**
- * Headings, the wordmark and the scan-result title. Loaded at the two weights
- * the design uses and nothing else — see docs/BUILD_PLAN.md §4.
+ * Headings, the wordmark and the scan-result title — see docs/BUILD_PLAN.md §4.
  *
- * Bricolage is a variable font with `wdth` and `opsz` axes, but `next/font`
- * only exposes extra axes when the weight range is left unpinned, and pinning
- * the weights is the stronger of the two rules. Tightness at display sizes
- * comes from the negative letter-spacing baked into the type scale instead.
+ * The weight range is deliberately left unpinned: `next/font` only serves the
+ * extra axes when it is. `wdth` runs 75–100 — 100 is the default, so the axis
+ * condenses rather than expands — and carries the tightness at display sizes
+ * that letter-spacing alone can only imitate. See the pairing table beside the
+ * type scale in `globals.css`.
+ *
+ * `opsz` is left off on purpose. Measured on the latin subset: pinned weights
+ * are 41KB, `wdth` alone is 78KB, and `wdth` + `opsz` is 132KB. Automatic
+ * optical sizing is not worth 53KB on the scan path when every display step
+ * already gets its width and tracking set by hand.
+ *
+ * The design still uses two weights and only two — 500 and 700. That is now a
+ * rule about what we set in CSS rather than about what is in the file.
  */
 const bricolage = Bricolage_Grotesque({
   variable: "--font-bricolage",
   subsets: ["latin"],
-  weight: ["500", "700"],
+  axes: ["wdth"],
   display: "swap",
 });
 

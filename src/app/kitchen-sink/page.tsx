@@ -48,7 +48,7 @@ function Section({
     <section id={id} className="border-line scroll-mt-20 border-t pt-8 pb-14">
       <header className="mb-6 flex items-baseline gap-3">
         <span className="text-ink-soft font-mono text-xs tabular-nums">{index}</span>
-        <h2 className="font-display text-ink text-2xl font-bold">{title}</h2>
+        <h2 className="font-display text-ink text-2xl font-bold font-stretch-97%">{title}</h2>
       </header>
       {note ? <p className="text-ink-soft mb-6 max-w-prose text-sm">{note}</p> : null}
       {children}
@@ -99,7 +99,7 @@ export default function KitchenSink() {
     <div className="mx-auto w-full max-w-5xl px-5 pb-24 sm:px-8">
       <header className="border-ink border-b-2 pt-10 pb-6">
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <h1 className="font-display text-ink text-5xl font-bold">Tally</h1>
+          <h1 className="font-display text-ink text-5xl font-bold font-stretch-90%">Tally</h1>
           <p className="text-ink-soft text-2xs font-mono">
             design system — palette &ldquo;foil&rdquo;
           </p>
@@ -147,11 +147,57 @@ export default function KitchenSink() {
             <Swatch token="stop" hex="#C42B1C" note="Failed, conflict" />
             <Swatch token="line" hex="#D3DAE3" note="Hairlines, borders" />
           </ul>
+          <ul className="mt-6 flex flex-wrap gap-4">
+            <Swatch token="ok-ink" hex="#0C7953" note="Text-safe --ok" />
+            <Swatch token="warn-ink" hex="#9B5B00" note="Text-safe --warn" />
+          </ul>
+
+          <table className="border-line mt-8 w-full border-t text-sm">
+            <caption className="text-ink-soft pt-4 pb-3 text-left text-sm">
+              Measured against WCAG 1.4.3, both surfaces the app actually paints text on.
+            </caption>
+            <thead>
+              <tr className="text-ink-soft border-line border-b text-left text-xs">
+                <th className="py-2 font-medium">As text</th>
+                <th className="py-2 text-right font-medium">on --card</th>
+                <th className="py-2 text-right font-medium">on --paper</th>
+              </tr>
+            </thead>
+            <tbody className="divide-line divide-y font-mono text-xs tabular-nums">
+              {[
+                ["--ink-soft", "6.00", "5.30", true],
+                ["--stop", "5.66", "5.00", true],
+                ["--ok-ink", "5.42", "4.78", true],
+                ["--warn-ink", "5.40", "4.76", true],
+                ["--accent", "4.46", "3.93", false],
+                ["--ok", "4.36", "3.84", false],
+                ["--warn", "3.46", "3.06", false],
+              ].map(([token, card, paper, passes]) => (
+                <tr key={token as string} className={passes ? "text-ink" : "text-ink-soft"}>
+                  <td className="py-2">{token}</td>
+                  <td className="py-2 text-right">{card}</td>
+                  <td className="py-2 text-right">{paper}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
           <p className="text-ink-soft mt-6 max-w-prose text-sm">
-            <span className="text-ink font-medium">Accent on white measures 4.6:1.</span> It passes,
-            with nothing to spare — do not lighten it. The status hues sit mid-luminance and fail as
-            text on either white or their own tint, so badges and inline messages keep an ink label
-            and let the shape carry the colour.
+            The rows in grey are below 4.5:1 and are fills, not text.{" "}
+            <span className="text-ink font-medium">
+              Note that --accent measures 4.46:1 on white, not the 4.6 the build plan claims
+            </span>{" "}
+            — white on a raspberry button is marginally under the floor at the md size, where the
+            label is 16px. Darkening the token to #D61455 would fix it; that is a brand decision, so
+            it has not been made here.
+          </p>
+          <p className="text-ink-soft mt-3 max-w-prose text-sm">
+            Where a status word genuinely wants to be coloured, use the ink variants:{" "}
+            <span className="text-ok-ink font-medium">stock updated</span>,{" "}
+            <span className="text-warn-ink font-medium">waiting for review</span>,{" "}
+            <span className="text-stop font-medium">publish failed</span>. Badges and chips still
+            keep an ink label and give the hue to the shape, because at badge sizes the label is
+            small and the shape is what carries across a scuffed screen.
           </p>
         </Section>
 
@@ -163,11 +209,15 @@ export default function KitchenSink() {
           note="Bricolage Grotesque for headings and the scan result. IBM Plex Sans for everything you read. IBM Plex Mono for digit strings that get compared by eye, and nothing else."
         >
           <div className="space-y-6">
-            <Example spec="font-display text-5xl font-bold — scan result title">
-              <p className="font-display text-ink text-5xl font-bold">Foil balloon</p>
+            <Example spec="font-display text-5xl font-stretch-90% font-bold — scan result">
+              <p className="font-display text-ink text-5xl font-bold font-stretch-90%">
+                Foil balloon
+              </p>
             </Example>
-            <Example spec="font-display text-3xl font-bold — page heading">
-              <p className="font-display text-ink text-3xl font-bold">Waiting for review</p>
+            <Example spec="font-display text-3xl font-stretch-95% font-bold — page heading">
+              <p className="font-display text-ink text-3xl font-bold font-stretch-95%">
+                Waiting for review
+              </p>
             </Example>
             <Example spec="font-display text-xl font-bold — section heading">
               <p className="font-display text-ink text-xl font-bold">
@@ -489,7 +539,7 @@ export default function KitchenSink() {
 
             <div className="bg-card border-line mx-4 mt-4 border p-4">
               <Badge tone="matched">In catalogue</Badge>
-              <p className="font-display text-ink mt-3 text-3xl font-bold">
+              <p className="font-display text-ink mt-3 text-3xl font-bold font-stretch-95%">
                 Foil balloon, star, gold
               </p>
               <p className="text-ink-soft mt-1 text-sm">Alpen, 45cm</p>
