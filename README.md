@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tally
 
-## Getting Started
+An internal stock and product-intake tool for a single Shopify store. Staff scan barcodes on an
+Android phone to update stock or capture a new product; an AI drafts the listing; an admin reviews
+and publishes it to the Point of Sale channel.
 
-First, run the development server:
+Shopify is the source of truth. Inventory writes go straight to the Admin API with an idempotency
+key and never wait for review; new products always do.
+
+## Requirements
+
+- Node 22+
+- pnpm 10 (`corepack enable pnpm`)
+- MongoDB as a single-node replica set, Valkey and MinIO — a `docker-compose.dev.yml` lands with
+  the database commit
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local   # then fill in every key
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Every variable in `.env.example` is required. `src/lib/env.ts` validates them with Zod and the
+server refuses to start if any are missing, printing the full list at once rather than one per
+restart.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Script           | What it does                              |
+| ---------------- | ----------------------------------------- |
+| `pnpm dev`       | Dev server                                |
+| `pnpm build`     | Production build (`output: 'standalone'`) |
+| `pnpm start`     | Serve the production build                |
+| `pnpm typecheck` | `next typegen` then `tsc --noEmit`        |
+| `pnpm lint`      | ESLint                                    |
+| `pnpm format`    | Prettier                                  |
+| `pnpm test`      | Vitest                                    |
 
-## Learn More
+CI runs typecheck, lint and test on every push and pull request, plus a gitleaks scan of the full
+history. A pre-commit hook runs the same scan against the staged diff and fails closed — install
+[gitleaks](https://github.com/gitleaks/gitleaks) before your first commit.
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The web service builds from the [Dockerfile](Dockerfile): multi-stage, `node:22-alpine`, Next's
+standalone output, non-root, no dev dependencies in the final layer. It runs behind a reverse proxy
+terminating TLS — the phone scanner needs a secure context, so plain http on a LAN IP will not do.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Configuration is entirely environment variables at run time; nothing is baked into a layer. A
+container started with an incomplete environment exits immediately and prints every missing key.
 
-## Deploy on Vercel
+## This repo is public
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+No store data is committed. Product types, vendors, barcodes, prices and IDs come from the Shopify
+Admin API at runtime or via setup scripts — never from a file in the repo. Test fixtures use
+synthetic GTINs. See `docs/BUILD_PLAN.md` §11.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Licence
+
+Apache-2.0 — see [LICENSE](LICENSE).

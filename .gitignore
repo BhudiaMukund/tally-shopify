@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — never commit a filled-in one. This repo is public: a leaked
+# SHOPIFY_ADMIN_TOKEN is a live store in someone else's hands within minutes.
 .env*
+!.env.example
 
 # vercel
 .vercel

@@ -1,0 +1,28 @@
+# Keep the build context small, and keep anything private out of the image.
+
+.git
+.github
+.husky
+
+node_modules
+.next
+out
+build
+coverage
+
+# Secrets and private planning docs. docs/ and CLAUDE.md are junctioned in from a
+# separate private repo and must never reach a layer.
+.env*
+docs
+CLAUDE.md
+AGENTS.md
+.claude
+
+Dockerfile
+.dockerignore
+README.md
+LICENSE
+
+*.log
+.DS_Store
+*.tsbuildinfo

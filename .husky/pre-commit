@@ -1,0 +1,57 @@
+#!/usr/bin/env sh
+
+# 1. Format and lint what's staged. This rewrites and re-stages files, so it has
+#    to run before the secret scan — gitleaks must see exactly what gets committed.
+pnpm exec lint-staged
+
+# 2. Scan the staged diff for secrets.
+#
+# This repo is public and the token it will eventually hold has write access to a
+# live store, so this hook fails closed: no scanner, no commit. Every `gitleaks`
+# package on npm is a third-party wrapper that downloads the binary, which is the
+# last place to accept an untrusted supply-chain link — so install it yourself.
+#
+# `gitleaks protect` was deprecated in v8.19; `git --staged` is the current form.
+SCAN="git --pre-commit --redact --staged --verbose"
+
+if command -v gitleaks >/dev/null 2>&1; then
+  # shellcheck disable=SC2086
+  exec gitleaks $SCAN
+fi
+
+# Pinned by digest rather than a tag. This is the scanner guarding a live-store
+# token, so the image must not be able to change under us — `latest` is whatever
+# the registry says today. Digest below is ghcr.io/gitleaks/gitleaks:v8.30.1
+# (multi-arch index). To bump: docker manifest inspect ghcr.io/gitleaks/gitleaks:<ver>
+GITLEAKS_IMAGE="ghcr.io/gitleaks/gitleaks@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb"
+
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  echo "gitleaks not found on PATH — falling back to Docker (slower)."
+  # Read-only mount and no network: the scan only reads the working tree, and a
+  # secret scanner is the last thing that should be able to write to your repo
+  # or phone home. The image pull happens before the container exists, so
+  # --network none does not prevent it.
+  # Git Bash rewrites container-side paths that look like POSIX paths, turning
+  # -w /repo into C:/Program Files/Git/repo. Harmless elsewhere.
+  export MSYS_NO_PATHCONV=1
+  # shellcheck disable=SC2086
+  exec docker run --rm --network none -v "$PWD:/repo:ro" -w /repo "$GITLEAKS_IMAGE" $SCAN
+fi
+
+cat >&2 <<'EOF'
+
+Commit blocked: gitleaks is not installed.
+
+This repo is public and will hold a Shopify Admin token with write access to a
+live store. The pre-commit secret scan is not optional, so it fails closed.
+
+Install it, then commit again:
+
+  Windows   winget install Gitleaks.Gitleaks      (then open a new terminal)
+  macOS     brew install gitleaks
+  Linux     see https://github.com/gitleaks/gitleaks#installing
+
+Or start Docker Desktop and this hook will use the container image instead.
+
+EOF
+exit 1
