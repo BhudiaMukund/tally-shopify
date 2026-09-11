@@ -38,7 +38,18 @@ restart.
 | `pnpm format`    | Prettier                                  |
 | `pnpm test`      | Vitest                                    |
 
-CI runs typecheck, lint and test on every push and pull request.
+CI runs typecheck, lint and test on every push and pull request, plus a gitleaks scan of the full
+history. A pre-commit hook runs the same scan against the staged diff and fails closed — install
+[gitleaks](https://github.com/gitleaks/gitleaks) before your first commit.
+
+## Deploy
+
+The web service builds from the [Dockerfile](Dockerfile): multi-stage, `node:22-alpine`, Next's
+standalone output, non-root, no dev dependencies in the final layer. It runs behind a reverse proxy
+terminating TLS — the phone scanner needs a secure context, so plain http on a LAN IP will not do.
+
+Configuration is entirely environment variables at run time; nothing is baked into a layer. A
+container started with an incomplete environment exits immediately and prints every missing key.
 
 ## This repo is public
 

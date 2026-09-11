@@ -35,3 +35,22 @@ jobs:
       - run: pnpm lint
 
       - run: pnpm test
+
+  # Deliberately a separate job: a lint failure and a leaked credential must not
+  # be able to mask one another. Mark this one required in branch protection.
+  secrets:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Scan the whole history. The default shallow checkout sees one commit
+          # and would miss a secret added earlier in the same branch.
+          fetch-depth: 0
+
+      # v3, not v2 — v2 runs on Node 20, which GitHub removed from hosted
+      # runners in September 2026. No GITLEAKS_LICENSE: this repo belongs to a
+      # personal account, and only organisation-owned repos need a key.
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

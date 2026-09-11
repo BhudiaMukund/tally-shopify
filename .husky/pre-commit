@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+
+# 1. Format and lint what's staged. This rewrites and re-stages files, so it has
+#    to run before the secret scan — gitleaks must see exactly what gets committed.
+pnpm exec lint-staged
+
+# 2. Scan the staged diff for secrets.
+#
+# This repo is public and the token it will eventually hold has write access to a
+# live store, so this hook fails closed: no scanner, no commit. Every `gitleaks`
+# package on npm is a third-party wrapper that downloads the binary, which is the
+# last place to accept an untrusted supply-chain link — so install it yourself.
+#
+# `gitleaks protect` was deprecated in v8.19; `git --staged` is the current form.
+SCAN="git --pre-commit --redact --staged --verbose"
+
+if command -v gitleaks >/dev/null 2>&1; then
+  # shellcheck disable=SC2086
+  exec gitleaks $SCAN
+fi
+
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  echo "gitleaks not found on PATH — falling back to Docker (slower)."
+  # shellcheck disable=SC2086
+  exec docker run --rm -v "$(pwd):/repo" -w /repo ghcr.io/gitleaks/gitleaks:latest $SCAN
+fi
+
+cat >&2 <<'EOF'
+
+Commit blocked: gitleaks is not installed.
+
+This repo is public and will hold a Shopify Admin token with write access to a
+live store. The pre-commit secret scan is not optional, so it fails closed.
+
+Install it, then commit again:
+
+  Windows   winget install Gitleaks.Gitleaks      (then open a new terminal)
+  macOS     brew install gitleaks
+  Linux     see https://github.com/gitleaks/gitleaks#installing
+
+Or start Docker Desktop and this hook will use the container image instead.
+
+EOF
+exit 1

@@ -16,7 +16,7 @@ function validEnv(): Record<string, string> {
     S3_ACCESS_KEY: "access",
     S3_SECRET_KEY: "secret",
     SHOPIFY_STORE_DOMAIN: "example-store.myshopify.com",
-    SHOPIFY_ADMIN_TOKEN: "shpat_0000000000000000000000000000000",
+    SHOPIFY_ADMIN_TOKEN: "shpat_not-a-real-token",
     SHOPIFY_API_VERSION: "2026-07",
     SHOPIFY_LOCATION_ID: "gid://shopify/Location/1",
     SHOPIFY_POS_PUBLICATION_ID: "gid://shopify/Publication/2",
