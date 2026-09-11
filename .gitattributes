@@ -1,0 +1,10 @@
+# Prettier writes LF. Without this, a clone on Windows with core.autocrlf=true
+# checks out CRLF and `pnpm format:check` fails on a clean tree.
+* text=auto eol=lf
+
+*.ico binary
+*.png binary
+*.jpg binary
+*.woff2 binary
+
+pnpm-lock.yaml -diff linguist-generated
