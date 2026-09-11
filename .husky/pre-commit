@@ -19,10 +19,23 @@ if command -v gitleaks >/dev/null 2>&1; then
   exec gitleaks $SCAN
 fi
 
+# Pinned by digest rather than a tag. This is the scanner guarding a live-store
+# token, so the image must not be able to change under us — `latest` is whatever
+# the registry says today. Digest below is ghcr.io/gitleaks/gitleaks:v8.30.1
+# (multi-arch index). To bump: docker manifest inspect ghcr.io/gitleaks/gitleaks:<ver>
+GITLEAKS_IMAGE="ghcr.io/gitleaks/gitleaks@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb"
+
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   echo "gitleaks not found on PATH — falling back to Docker (slower)."
+  # Read-only mount and no network: the scan only reads the working tree, and a
+  # secret scanner is the last thing that should be able to write to your repo
+  # or phone home. The image pull happens before the container exists, so
+  # --network none does not prevent it.
+  # Git Bash rewrites container-side paths that look like POSIX paths, turning
+  # -w /repo into C:/Program Files/Git/repo. Harmless elsewhere.
+  export MSYS_NO_PATHCONV=1
   # shellcheck disable=SC2086
-  exec docker run --rm -v "$(pwd):/repo" -w /repo ghcr.io/gitleaks/gitleaks:latest $SCAN
+  exec docker run --rm --network none -v "$PWD:/repo:ro" -w /repo "$GITLEAKS_IMAGE" $SCAN
 fi
 
 cat >&2 <<'EOF'
