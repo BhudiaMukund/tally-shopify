@@ -106,3 +106,86 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ ...validEnv(), PATH: "/usr/bin", CI: "true" })).not.toThrow();
   });
 });
+
+describe("parseEnv — AI provider keys", () => {
+  function missingKeysFor(source: Record<string, string | undefined>): readonly string[] {
+    try {
+      parseEnv(source);
+      return [];
+    } catch (error) {
+      return (error as EnvValidationError).missing;
+    }
+  }
+
+  it("accepts gemini with its own key and no anthropic key", () => {
+    const source: Record<string, string | undefined> = { ...validEnv(), AI_PROVIDER: "gemini" };
+    delete source.ANTHROPIC_API_KEY;
+
+    expect(parseEnv(source).AI_PROVIDER).toBe("gemini");
+  });
+
+  it("requires GEMINI_API_KEY when gemini is selected", () => {
+    const source: Record<string, string | undefined> = { ...validEnv(), AI_PROVIDER: "gemini" };
+    delete source.GEMINI_API_KEY;
+
+    expect(missingKeysFor(source)).toEqual(["GEMINI_API_KEY"]);
+  });
+
+  it("accepts anthropic with its own key and no gemini key", () => {
+    const source: Record<string, string | undefined> = {
+      ...validEnv(),
+      AI_PROVIDER: "anthropic",
+      ANTHROPIC_API_KEY: "anthropic-key",
+    };
+    delete source.GEMINI_API_KEY;
+
+    const env = parseEnv(source);
+    expect(env.AI_PROVIDER).toBe("anthropic");
+    expect(env.GEMINI_API_KEY).toBeUndefined();
+  });
+
+  it("requires ANTHROPIC_API_KEY when anthropic is selected", () => {
+    const source = { ...validEnv(), AI_PROVIDER: "anthropic" };
+
+    expect(missingKeysFor(source)).toEqual(["ANTHROPIC_API_KEY"]);
+  });
+
+  it("treats a blank provider key as missing", () => {
+    const source = { ...validEnv(), AI_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "   " };
+
+    expect(missingKeysFor(source)).toEqual(["ANTHROPIC_API_KEY"]);
+  });
+
+  it("falls back to gemini's key when AI_PROVIDER is unset", () => {
+    const source: Record<string, string | undefined> = { ...validEnv() };
+    delete source.AI_PROVIDER;
+    delete source.GEMINI_API_KEY;
+
+    expect(missingKeysFor(source)).toEqual(["GEMINI_API_KEY"]);
+  });
+
+  // Regression guard: a Zod `.superRefine()` on the object would be skipped
+  // entirely once another field had failed, so the provider key would go
+  // unreported until the next restart. It is checked outside the schema for
+  // exactly this reason — see missingProviderKey in env.ts.
+  it("reports the provider key alongside unrelated failures, in one pass", () => {
+    const source: Record<string, string | undefined> = { ...validEnv(), AI_PROVIDER: "anthropic" };
+    delete source.AUTH_SECRET;
+    delete source.MONGODB_URI;
+
+    expect(missingKeysFor(source)).toEqual(["ANTHROPIC_API_KEY", "AUTH_SECRET", "MONGODB_URI"]);
+  });
+
+  it("leaves an unrecognised provider to the enum rather than naming a key", () => {
+    const source = { ...validEnv(), AI_PROVIDER: "openai" };
+
+    try {
+      parseEnv(source);
+      expect.unreachable("expected parseEnv to throw");
+    } catch (error) {
+      const failure = error as EnvValidationError;
+      expect(failure.missing).toEqual([]);
+      expect(failure.invalid.map((entry) => entry.key)).toEqual(["AI_PROVIDER"]);
+    }
+  });
+});

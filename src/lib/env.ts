@@ -51,9 +51,9 @@ const envSchema = z.object({
     ),
   SHOPIFY_WEBHOOK_SECRET: z.string().min(1),
 
-  // ai
+  // ai — only the selected provider's key is required; see providerKeys
   AI_PROVIDER: z.enum(["gemini", "anthropic"]).default("gemini"),
-  GEMINI_API_KEY: z.string().min(1),
+  GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_MODEL: z.string().min(1).default("gemini-flash-latest"),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   AI_PROMPT_VERSION: z.coerce.number().int().positive().default(1),
@@ -111,6 +111,30 @@ function compact(source: RawEnv): RawEnv {
   return out;
 }
 
+/** The API key each provider needs. A key for the other provider stays optional. */
+const providerKeys = {
+  gemini: "GEMINI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+} as const;
+
+/**
+ * Names the API key the selected provider needs, when it isn't set.
+ *
+ * Checked here rather than as a `.superRefine()` on the schema because Zod skips
+ * object-level refinements as soon as any field has failed. A missing
+ * `AUTH_SECRET` would therefore hide a missing `ANTHROPIC_API_KEY` until the
+ * next restart, which is exactly the one-problem-at-a-time loop this module
+ * exists to avoid.
+ */
+function missingProviderKey(present: RawEnv): string | undefined {
+  const provider = present.AI_PROVIDER ?? "gemini";
+  // An unrecognised provider is the enum's problem to report, not ours.
+  if (!(provider in providerKeys)) return undefined;
+
+  const key = providerKeys[provider as keyof typeof providerKeys];
+  return present[key] === undefined ? key : undefined;
+}
+
 /**
  * Parses an environment source, reporting *every* problem at once rather than
  * failing on the first one — fixing config one restart at a time is miserable.
@@ -118,20 +142,26 @@ function compact(source: RawEnv): RawEnv {
 export function parseEnv(source: RawEnv): Env {
   const present = compact(source);
   const result = envSchema.safeParse(present);
-  if (result.success) return result.data;
+  const providerKey = missingProviderKey(present);
+
+  if (result.success && providerKey === undefined) return result.data;
 
   const missing: string[] = [];
   const invalid: { key: string; reason: string }[] = [];
   const seen = new Set<string>();
 
-  for (const issue of result.error.issues) {
-    const key = String(issue.path[0] ?? "(root)");
-    if (seen.has(key)) continue;
-    seen.add(key);
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      const key = String(issue.path[0] ?? "(root)");
+      if (seen.has(key)) continue;
+      seen.add(key);
 
-    if (present[key] === undefined) missing.push(key);
-    else invalid.push({ key, reason: issue.message });
+      if (present[key] === undefined) missing.push(key);
+      else invalid.push({ key, reason: issue.message });
+    }
   }
+
+  if (providerKey !== undefined && !seen.has(providerKey)) missing.push(providerKey);
 
   missing.sort();
   invalid.sort((a, b) => a.key.localeCompare(b.key));
