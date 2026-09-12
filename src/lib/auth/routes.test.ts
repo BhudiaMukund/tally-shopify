@@ -17,6 +17,16 @@ describe("authorizeRoute", () => {
     }
   });
 
+  it("always lets anyone reach /signed-out, whatever they are holding", () => {
+    // It is the only route that can take a cookie away. Sending a signed-in
+    // visitor "home" from here, the way /login does, would strand someone
+    // whose account was deleted: their token still reads as valid, so /login
+    // returns them to / and nothing ever clears it.
+    expect(authorizeRoute("/signed-out", undefined)).toBe("allow");
+    expect(authorizeRoute("/signed-out", "staff")).toBe("allow");
+    expect(authorizeRoute("/signed-out", "admin")).toBe("allow");
+  });
+
   it("protects our own API routes — /api/inventory writes to a live store", () => {
     expect(authorizeRoute("/api/inventory", undefined)).toBe("sign-in");
     expect(authorizeRoute("/api/intake", undefined)).toBe("sign-in");
@@ -69,6 +79,25 @@ describe("safeCallbackUrl", () => {
     expect(safeCallbackUrl("/\\evil.example")).toBeUndefined();
     expect(safeCallbackUrl("javascript:alert(1)")).toBeUndefined();
     expect(safeCallbackUrl("evil.example")).toBeUndefined();
+  });
+
+  it("drops a path whose slashes are only hidden by a stripped character", () => {
+    // The URL parser removes tab, newline and carriage return from anywhere in
+    // a URL, so each of these starts with a single slash on inspection and
+    // resolves to https://evil.example/ when followed. A startsWith("//")
+    // check passes every one of them.
+    expect(safeCallbackUrl("/\t/evil.example")).toBeUndefined();
+    expect(safeCallbackUrl("/\n/evil.example")).toBeUndefined();
+    expect(safeCallbackUrl("/\r/evil.example")).toBeUndefined();
+    expect(safeCallbackUrl("/\t\t//evil.example")).toBeUndefined();
+    expect(safeCallbackUrl("/\r\n/evil.example")).toBeUndefined();
+  });
+
+  it("strips those characters out of a path it does keep", () => {
+    // Returning the input verbatim would hand the stripping back to whatever
+    // follows the redirect. The parsed path is what gets returned.
+    expect(safeCallbackUrl("/sc\tan")).toBe("/scan");
+    expect(safeCallbackUrl("/scan\n")).toBe("/scan");
   });
 
   it("refuses to bounce back to the login screen", () => {

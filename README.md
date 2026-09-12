@@ -58,9 +58,17 @@ There is no sign-up screen. Accounts are made from the CLI:
 pnpm create-user --email sam@example.com --name "Sam" --role staff
 ```
 
-The password is prompted for with the echo off, or read from `TALLY_PASSWORD`
-when there is no terminal. It is never accepted as a flag, so it stays out of
-shell history. Passwords are hashed with argon2id.
+The password is prompted for with the echo off, which is the only form that
+keeps it out of shell history. There is no `--password` flag.
+
+Where there is no terminal, it is read from `TALLY_PASSWORD` — but supply that
+through a protected mechanism, not inline. An inline assignment
+(`TALLY_PASSWORD=... pnpm create-user`) is recorded in shell history like any
+other command, and CI runners commonly echo the environment into their logs.
+Prefer a secret store, a mode-600 env file sourced for the run, or your CI's
+masked-secret mechanism.
+
+Passwords are hashed with argon2id.
 
 Two roles. `staff` gets the scanning app; `admin` additionally gets `/admin/*`.
 Everything except `/login` needs a session, including `/api/*` — `/api/inventory`

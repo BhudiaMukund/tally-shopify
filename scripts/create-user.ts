@@ -3,9 +3,12 @@
  *
  *   pnpm create-user --email sam@example.com --name "Sam" --role admin
  *
- * Prompts for the password with the echo off. For a non-interactive run
- * (a container, a seed step) set TALLY_PASSWORD instead; there is deliberately
- * no --password flag, because that writes the password into shell history.
+ * Prompts for the password with the echo off, which is the only form that
+ * keeps it out of shell history — hence no --password flag. For a
+ * non-interactive run (a container, a seed step) it is read from
+ * TALLY_PASSWORD, which is no safer on its own: an inline assignment is
+ * recorded like any other command and CI runners often log the environment.
+ * Supply it from a secret store or a mode-600 file. See the README.
  */
 import { passwordProblem } from "@/lib/auth/password";
 import { createUser, DuplicateEmailError } from "@/lib/auth/users";

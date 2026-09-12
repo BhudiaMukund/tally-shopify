@@ -6,7 +6,7 @@ import { getDb } from "@/lib/db/client";
 import { users } from "@/lib/db/collections";
 import type { UserRole } from "@/lib/db/schemas/users";
 
-import { DENIED_PATH, LOGIN_PATH } from "./routes";
+import { DENIED_PATH, LOGIN_PATH, SIGNED_OUT_PATH } from "./routes";
 
 /**
  * The authoritative check, for a page or a route handler.
@@ -29,20 +29,26 @@ export interface CurrentUser {
 }
 
 /**
- * The signed-in user, re-read from Mongo. Redirects to /login if there is no
- * session, or if the account behind it has since been deactivated or deleted.
+ * The signed-in user, re-read from Mongo.
+ *
+ * No session at all goes to /login. A session whose account no longer stands
+ * behind it goes to /signed-out instead, which takes the cookie away first:
+ * the token is still structurally valid, so /login would hand it to the proxy,
+ * which would read a perfectly good session and bounce it back to /.
  */
 export async function requireUser(): Promise<CurrentUser> {
   const session = await auth();
-  const id = session?.user?.id;
-  if (id === undefined || !ObjectId.isValid(id)) redirect(LOGIN_PATH);
+  if (session === null) redirect(LOGIN_PATH);
+
+  const id = session.user?.id;
+  if (id === undefined || !ObjectId.isValid(id)) redirect(SIGNED_OUT_PATH);
 
   const db = await getDb();
   const account = await users(db).findOne({ _id: new ObjectId(id) });
 
-  // Deactivated, deleted, or demoted since the token was issued. The token
-  // itself stays valid for 30 days; this is what actually locks them out.
-  if (account === null || !account.active) redirect(LOGIN_PATH);
+  // Deactivated or deleted since the token was issued. The token itself stays
+  // valid for 30 days; this is what actually locks them out.
+  if (account === null || !account.active) redirect(SIGNED_OUT_PATH);
 
   return {
     id,
