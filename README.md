@@ -50,6 +50,38 @@ CI runs typecheck, lint and test on every push and pull request, plus a gitleaks
 history. A pre-commit hook runs the same scan against the staged diff and fails closed — install
 [gitleaks](https://github.com/gitleaks/gitleaks) before your first commit.
 
+## Accounts and access
+
+There is no sign-up screen. Accounts are made from the CLI:
+
+```bash
+pnpm create-user --email sam@example.com --name "Sam" --role staff
+```
+
+The password is prompted for with the echo off, which is the only form that
+keeps it out of shell history. There is no `--password` flag.
+
+Where there is no terminal, it is read from `TALLY_PASSWORD` — but supply that
+through a protected mechanism, not inline. An inline assignment
+(`TALLY_PASSWORD=... pnpm create-user`) is recorded in shell history like any
+other command, and CI runners commonly echo the environment into their logs.
+Prefer a secret store, a mode-600 env file sourced for the run, or your CI's
+masked-secret mechanism.
+
+Passwords are hashed with argon2id.
+
+Two roles. `staff` gets the scanning app; `admin` additionally gets `/admin/*`.
+Everything except `/login` needs a session, including `/api/*` — `/api/inventory`
+writes to a live store. Sessions last 30 days so nobody is asked to sign in
+mid-shift.
+
+Sessions are JWTs, which is not a preference: `@auth/core` rejects a credentials
+sign-in when the session strategy is `database`, and configuring an adapter is
+what selects that strategy. The consequence is that deactivating an account does
+not invalidate a token already issued, so `requireUser()` re-reads the `users`
+row on every guarded page and route. Route protection in `src/proxy.ts` is a
+cheap cookie check; the guards in `src/lib/auth/guards.ts` are the real one.
+
 ## Deploy
 
 The web service builds from the [Dockerfile](Dockerfile): multi-stage, `node:22-alpine`, Next's

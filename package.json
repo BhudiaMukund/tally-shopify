@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "db:indexes": "tsx scripts/ensure-indexes.ts",
+    "create-user": "tsx scripts/create-user.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -28,12 +29,14 @@
     "*.{js,mjs,cjs,json,css,md,yml,yaml}": "prettier --write"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.2.1",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-toast": "^1.2.23",
     "@radix-ui/react-visually-hidden": "^1.2.11",
     "clsx": "^2.1.1",
     "mongodb": "^7.6.0",
     "next": "16.3.4",
+    "next-auth": "5.0.0-beta.32",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.6.0",
