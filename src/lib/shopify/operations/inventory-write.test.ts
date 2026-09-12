@@ -173,7 +173,7 @@ describe("activateInventoryAtLocation", () => {
 });
 
 describe("setInventoryQuantities", () => {
-  it("sends compareQuantity on every call and never ignoreCompareQuantity", async () => {
+  it("sends changeFromQuantity on every call and never ignoreCompareQuantity — the real wire field, confirmed by live introspection", async () => {
     nextBody = {
       data: {
         inventorySetQuantities: {
@@ -197,7 +197,7 @@ describe("setInventoryQuantities", () => {
     expect(result).toEqual({ quantityAfterChange: 30, userErrors: [] });
     const input = lastVariables.input as Record<string, unknown>;
     expect(input.quantities).toEqual([
-      { inventoryItemId: ITEM, locationId: LOCATION, quantity: 30, compareQuantity: 24 },
+      { inventoryItemId: ITEM, locationId: LOCATION, quantity: 30, changeFromQuantity: 24 },
     ]);
     expect(input).not.toHaveProperty("ignoreCompareQuantity");
     expect(lastVariables.idempotencyKey).toBe("11111111-1111-1111-1111-111111111111");
