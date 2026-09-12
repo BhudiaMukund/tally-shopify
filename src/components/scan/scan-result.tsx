@@ -10,6 +10,7 @@ import {
   type LookupResponse,
   type LookupVariant,
 } from "@/lib/scan/lookup-client";
+import { distinctProductCount, reconcileProducts } from "@/lib/scan/reconcile-matches";
 
 import { CountScreen } from "./count-screen";
 import { ProductChooser } from "./product-chooser";
@@ -19,6 +20,18 @@ import { VariantChooser } from "./variant-chooser";
  * The scan decision tree from BUILD_PLAN §3, past the lookup itself: which
  * screen a `match`, `pending` or `new` answer turns into.
  *
+ * Only ever mounted once the live Shopify answer has confirmed the result
+ * (`ScanResultSheet` holds back on rendering this while `reconciling` is
+ * true) — the branch below is decided exactly once, in `useState`'s
+ * initialiser, and a component that could be handed a still-unconfirmed
+ * cached-only snapshot would freeze that decision on data that might be
+ * wrong. That happened: a cached-only bug once answered with an empty product
+ * list, this decided "not one product" from it, and the correct answer
+ * arriving a moment later could no longer change a decision already made
+ * (see `src/lib/catalog/lookup.test.ts` for the reproduction). Deciding only
+ * from the confirmed answer also matches CLAUDE.md §1: the quantity
+ * `CountScreen` seeds `compareQuantity` from must never come from the mirror.
+ *
  * `new_variant` and `new_product` intake are commit 9–10, not this one — every
  * escape here ("none of these", "price is different", "capture new product")
  * still goes to `/intake` so nothing dead-ends, but that route is a
@@ -27,8 +40,6 @@ import { VariantChooser } from "./variant-chooser";
 
 export interface ScanResultProps {
   lookup: LookupResponse;
-  /** The cached answer painted; the live Shopify one has not confirmed it yet. */
-  reconciling: boolean;
   onDone: () => void;
 }
 
@@ -43,8 +54,15 @@ type Selection =
       chosenFrom: string[];
     };
 
+/**
+ * `products` must already be the reconciled, invariant-checked list —
+ * dedupe-by-variant, group-by-product — not a raw response taken on trust.
+ * The branch turns on *distinct product count*, never a response's
+ * `.length`, which a duplicate row would inflate without there being two
+ * products to choose between.
+ */
 function initialSelection(products: readonly LookupProduct[]): Selection {
-  if (products.length !== 1) return { step: "product" };
+  if (distinctProductCount(products) !== 1) return { step: "product" };
   const [product] = products;
   if (product === undefined) return { step: "product" };
   if (product.variants.length !== 1) return { step: "variant", product };
@@ -54,9 +72,10 @@ function initialSelection(products: readonly LookupProduct[]): Selection {
     : { step: "count", product, variant, ambiguousBarcode: false, chosenFrom: [] };
 }
 
-export function ScanResult({ lookup, reconciling, onDone }: ScanResultProps) {
+export function ScanResult({ lookup, onDone }: ScanResultProps) {
   const router = useRouter();
-  const [selection, setSelection] = useState<Selection>(() => initialSelection(lookup.products));
+  const products = reconcileProducts(lookup.products);
+  const [selection, setSelection] = useState<Selection>(() => initialSelection(products));
 
   function toIntake(reason: string) {
     router.push(`/intake?barcode=${encodeURIComponent(lookup.barcode)}&reason=${reason}`);
@@ -113,17 +132,15 @@ export function ScanResult({ lookup, reconciling, onDone }: ScanResultProps) {
     );
   }
 
-  const allMatched = allVariants(lookup.products);
+  const allMatched = allVariants(products);
   const ambiguousBarcode = allMatched.length > 1;
   const chosenFrom = ambiguousBarcode ? allMatched.map((variant) => variant.variantId) : [];
 
   return (
     <>
-      {reconciling ? <p className="text-ink-soft mb-3 text-xs">Confirming with Shopify…</p> : null}
-
       {selection.step === "product" ? (
         <ProductChooser
-          products={lookup.products}
+          products={products}
           onChoose={(product) => {
             const [only, second] = product.variants;
             setSelection(

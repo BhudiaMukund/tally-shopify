@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireApiUser } from "@/lib/auth/guards";
-import { lookupByBarcode, lookupStateOf, type PendingMatch } from "@/lib/catalog/lookup";
+import { lookupByBarcode, settleLookup, type PendingMatch } from "@/lib/catalog/lookup";
 import { log } from "@/lib/log";
 
 /**
@@ -42,36 +42,34 @@ export async function GET(request: Request): Promise<Response> {
   }
   const cachedOnly = url.searchParams.get("cachedOnly") === "1";
 
-  const lookup = await lookupByBarcode(barcode, { cachedOnly });
-  const live = await lookup.live;
-  const products = live.ok ? live.products : lookup.cached;
+  const settled = await settleLookup(await lookupByBarcode(barcode, { cachedOnly }));
 
   const ms = Math.round(performance.now() - startedAt);
   if (ms > 800) {
-    log.warn("lookup.slow", { barcode: lookup.barcode, cachedOnly, ms });
+    log.warn("lookup.slow", { barcode: settled.barcode, cachedOnly, ms });
   }
 
   // §3: one barcode legitimately covers a size run on *one* product. More than
   // one product sharing a barcode is a catalogue data error worth fixing at
   // the source, not something the scan screen should paper over — logged here
   // regardless of whether the resulting count ever gets applied.
-  if (products.length > 1) {
+  if (settled.products.length > 1) {
     log.warn("catalog.barcode_collision", {
-      barcode: lookup.barcode,
-      productIds: products.map((product) => product.productId),
+      barcode: settled.barcode,
+      productIds: settled.products.map((product) => product.productId),
     });
   }
 
   return NextResponse.json(
     {
-      raw: lookup.raw,
-      barcode: lookup.barcode,
-      wellFormed: lookup.wellFormed,
-      checkDigitOk: lookup.checkDigitOk,
-      state: lookupStateOf({ wellFormed: lookup.wellFormed, products, pending: lookup.pending }),
-      products,
-      pending: lookup.pending.map(serialisePending),
-      live: live.ok ? { ok: true } : { ok: false, error: live.error },
+      raw: settled.raw,
+      barcode: settled.barcode,
+      wellFormed: settled.wellFormed,
+      checkDigitOk: settled.checkDigitOk,
+      state: settled.state,
+      products: settled.products,
+      pending: settled.pending.map(serialisePending),
+      live: settled.live.ok ? { ok: true } : { ok: false, error: settled.live.error },
       cachedOnly,
     },
     { status: 200, headers: { "server-timing": `total;dur=${ms}` } },
