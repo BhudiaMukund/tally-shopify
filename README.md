@@ -82,6 +82,29 @@ not invalidate a token already issued, so `requireUser()` re-reads the `users`
 row on every guarded page and route. Route protection in `src/proxy.ts` is a
 cheap cookie check; the guards in `src/lib/auth/guards.ts` are the real one.
 
+## Connecting a store
+
+```bash
+pnpm shopify:install    # prints SHOPIFY_ADMIN_TOKEN
+pnpm shopify:doctor     # prints SHOPIFY_LOCATION_ID and SHOPIFY_POS_PUBLICATION_ID
+pnpm taxonomy:sync      # fills the taxonomy collection from the live catalogue
+```
+
+`shopify:install` exists because there is no longer a way to copy a token out of
+the admin UI: Dev Dashboard apps do not show a per-install token and legacy
+custom apps can no longer be created. It runs the authorization code grant
+against a throwaway localhost callback, checking the state nonce and the request
+HMAC, and prints the offline token. Set `SHOPIFY_API_KEY` and
+`SHOPIFY_API_SECRET` from the app in the Dev Dashboard first, and list
+`http://localhost:3456/auth/callback` as a redirect URL on it.
+
+All three go through `src/lib/shopify/client.ts`, which reads
+`extensions.cost.throttleStatus` from every response and waits before the next
+call when the leaky bucket drops under 200 points — Shopify's GraphQL limit is
+cost-based, and it answers an overrun with HTTP 200 and a `THROTTLED` error
+rather than a 429. Operations live in `src/lib/shopify/operations/`, one named
+export each with its own Zod response schema.
+
 ## Deploy
 
 The web service builds from the [Dockerfile](Dockerfile): multi-stage, `node:22-alpine`, Next's
