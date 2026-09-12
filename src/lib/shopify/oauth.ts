@@ -47,34 +47,134 @@ export function buildAuthorizeUrl(options: {
 }
 
 /**
- * Verifies the HMAC Shopify appends to the callback.
+ * The two candidate messages, built from the *raw* query string.
  *
- * Drop `hmac`, sort the rest alphabetically, join as `key=value&…`, sign with
- * the client secret, compare in constant time. `signature` is dropped too — it
- * is the legacy sibling of `hmac` and was never part of the signed message.
+ * Raw, because the encoding is the whole question and `URLSearchParams` throws
+ * it away: once a value has been decoded there is no way back to the bytes
+ * Shopify actually signed. Everything here works on the query string as it
+ * arrived on the wire.
+ *
+ * Per the 2026-07 docs, only `hmac` is removed — "Remove the `hmac` parameter
+ * from the query string, sort the remaining parameters alphabetically". An
+ * earlier version of this function also dropped `signature`, which is an
+ * app-proxy parameter that has no business in an OAuth callback; dropping a
+ * parameter Shopify did sign is precisely how the message ends up wrong.
  */
-export function verifyCallbackHmac(params: URLSearchParams, clientSecret: string): boolean {
-  const provided = params.get("hmac");
-  if (provided === null || provided === "") return false;
+export interface CallbackMessages {
+  /** Values exactly as they arrived, still percent-encoded. */
+  encoded: string;
+  /** Values URL-decoded, which is what most framework-parsed query objects give. */
+  decoded: string;
+  /** The hmac Shopify sent, or undefined. */
+  hmac: string | undefined;
+  /** Parameter names present, in sorted order. Useful in a debug dump. */
+  keys: string[];
+}
 
-  const message = [...params.entries()]
-    .filter(([key]) => key !== "hmac" && key !== "signature")
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("&");
+/** Splits a raw query string without decoding anything. */
+function rawPairs(rawQuery: string): { key: string; rawValue: string }[] {
+  return rawQuery
+    .replace(/^\?/, "")
+    .split("&")
+    .filter((pair) => pair !== "")
+    .map((pair) => {
+      const index = pair.indexOf("=");
+      return index === -1
+        ? { key: pair, rawValue: "" }
+        : { key: pair.slice(0, index), rawValue: pair.slice(index + 1) };
+    });
+}
 
-  const expected = createHmac("sha256", clientSecret).update(message).digest();
-
-  let supplied: Buffer;
+function decodeComponent(value: string): string {
   try {
-    supplied = Buffer.from(provided, "hex");
+    // `+` is a space in application/x-www-form-urlencoded, which is what a
+    // query string is. decodeURIComponent alone does not handle it.
+    return decodeURIComponent(value.replace(/\+/g, " "));
   } catch {
-    return false;
+    return value;
   }
+}
+
+export function callbackMessages(rawQuery: string): CallbackMessages {
+  const pairs = rawPairs(rawQuery);
+  const hmac = pairs.find((pair) => decodeComponent(pair.key) === "hmac")?.rawValue;
+
+  const signed = pairs
+    .filter((pair) => decodeComponent(pair.key) !== "hmac")
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+
+  return {
+    encoded: signed.map((pair) => `${pair.key}=${pair.rawValue}`).join("&"),
+    decoded: signed
+      .map((pair) => `${decodeComponent(pair.key)}=${decodeComponent(pair.rawValue)}`)
+      .join("&"),
+    hmac: hmac === undefined || hmac === "" ? undefined : hmac,
+    keys: signed.map((pair) => decodeComponent(pair.key)),
+  };
+}
+
+function digestOf(message: string, clientSecret: string): string {
+  return createHmac("sha256", clientSecret).update(message).digest("hex");
+}
+
+function digestMatches(computed: string, provided: string): boolean {
+  const a = Buffer.from(computed, "utf8");
+  const b = Buffer.from(provided, "utf8");
   // timingSafeEqual throws on a length mismatch, which would itself be a
   // (very coarse) oracle and, more practically, a crash on malformed input.
-  if (supplied.length !== expected.length) return false;
-  return timingSafeEqual(supplied, expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+export type HmacVariant = "encoded" | "decoded";
+
+export interface HmacResult {
+  ok: boolean;
+  /** Which message construction matched, when one did. */
+  variant?: HmacVariant;
+  computed: Record<HmacVariant, string>;
+  messages: CallbackMessages;
+}
+
+/**
+ * Verifies the HMAC Shopify appends to the callback, against the raw query.
+ *
+ * Both encodings are tried because the documentation does not settle it and
+ * Shopify's own libraries disagree: the Ruby gem signs the decoded params,
+ * while the JS library re-encodes them through `URLSearchParams`. For an
+ * ordinary callback the two are byte-identical — `code`, `shop`, `state` and
+ * `timestamp` contain nothing that encodes differently — so the question only
+ * bites when a parameter like `host` carries base64 padding (`=` → `%3D`).
+ * That is almost certainly what broke this install.
+ *
+ * The encoded form is checked first and is the one to prefer: a decoded
+ * message is ambiguous, because a value containing a literal `&` or `=` would
+ * join into something indistinguishable from two separate parameters.
+ *
+ * Accepting either does not weaken anything — producing a valid digest for
+ * *either* message still requires the client secret — but once a real callback
+ * tells us which one Shopify used, the other should go.
+ */
+export function verifyCallbackHmacDetailed(rawQuery: string, clientSecret: string): HmacResult {
+  const messages = callbackMessages(rawQuery);
+  const computed: Record<HmacVariant, string> = {
+    encoded: digestOf(messages.encoded, clientSecret),
+    decoded: digestOf(messages.decoded, clientSecret),
+  };
+
+  if (messages.hmac === undefined) return { ok: false, computed, messages };
+
+  for (const variant of ["encoded", "decoded"] as const) {
+    if (digestMatches(computed[variant], messages.hmac)) {
+      return { ok: true, variant, computed, messages };
+    }
+  }
+  return { ok: false, computed, messages };
+}
+
+/** The yes/no answer. Takes the raw query string, not parsed parameters. */
+export function verifyCallbackHmac(rawQuery: string, clientSecret: string): boolean {
+  return verifyCallbackHmacDetailed(rawQuery, clientSecret).ok;
 }
 
 /** Constant-time compare for the state nonce. Lengths are ours, so equal by construction. */

@@ -23,13 +23,40 @@ import {
   scopeDifference,
   statesMatch,
   tokenExchangeBody,
-  verifyCallbackHmac,
+  verifyCallbackHmacDetailed,
+  type HmacResult,
 } from "@/lib/shopify/oauth";
 
 import { loadEnvFiles } from "./load-env";
 
 const PORT = Number(process.env.SHOPIFY_OAUTH_PORT ?? 3456);
 const CALLBACK_PATH = "/auth/callback";
+const DEBUG = process.env.SHOPIFY_OAUTH_DEBUG === "1";
+
+/**
+ * Prints everything needed to work out why a signature did not match: the
+ * query exactly as it arrived, both candidate messages, and both digests
+ * beside the one Shopify sent.
+ *
+ * The client secret is never printed. The dump does contain the shop domain
+ * and the one-time authorization code, so it is off by default and the code
+ * is spent (or expired) within minutes — but do not paste it somewhere public.
+ */
+function dumpHmac(rawQuery: string, result: HmacResult): void {
+  const line = (label: string, value: string): void =>
+    console.log(`\n${label}\n  ${value === "" ? "(empty)" : value}`);
+
+  console.log(`\n${"=".repeat(64)}\nHMAC debug`);
+  line("raw callback query string, exactly as received:", rawQuery);
+  line("parameters signed (hmac removed), sorted:", result.messages.keys.join(", "));
+  line("message — values left percent-encoded:", result.messages.encoded);
+  line("message — values URL-decoded:", result.messages.decoded);
+  line("digest from the encoded message:", result.computed.encoded);
+  line("digest from the decoded message:", result.computed.decoded);
+  line("hmac Shopify sent:", result.messages.hmac ?? "(none)");
+  line("result:", result.ok ? `matched the ${result.variant} message` : "neither message matched");
+  console.log(`${"=".repeat(64)}\n`);
+}
 
 class UsageError extends Error {}
 
@@ -76,6 +103,10 @@ function waitForCallback(expectedState: string, clientSecret: string): Promise<C
       }
 
       const params = url.searchParams;
+      // The raw query string, before any decoding — the HMAC is computed over
+      // these exact bytes, so `url.searchParams` is no good for it.
+      const rawQuery = (request.url ?? "").split("?")[1] ?? "";
+
       const fail = (why: string): void => {
         reply(response, 400, "Install failed", why);
         server.close();
@@ -89,9 +120,20 @@ function waitForCallback(expectedState: string, clientSecret: string): Promise<C
         fail("The state nonce did not match. Start again.");
         return;
       }
-      if (!verifyCallbackHmac(params, clientSecret)) {
-        fail("The request HMAC did not verify. Check SHOPIFY_API_SECRET.");
+
+      const hmac = verifyCallbackHmacDetailed(rawQuery, clientSecret);
+      if (DEBUG) dumpHmac(rawQuery, hmac);
+      if (!hmac.ok) {
+        fail(
+          "The request HMAC did not verify. Re-run with SHOPIFY_OAUTH_DEBUG=1 to " +
+            "see the signed message, or check SHOPIFY_API_SECRET.",
+        );
         return;
+      }
+      if (hmac.variant === "decoded") {
+        // Worth knowing: it means the encoded form is not what Shopify signed,
+        // and the fallback in oauth.ts is load-bearing rather than belt-and-braces.
+        console.warn("\nNote: the HMAC matched the URL-decoded message, not the encoded one.");
       }
 
       const shop = params.get("shop") ?? "";

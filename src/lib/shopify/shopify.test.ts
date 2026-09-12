@@ -11,9 +11,11 @@ import {
   isValidShopDomain,
   REQUIRED_SCOPES,
   scopeDifference,
+  callbackMessages,
   statesMatch,
   tokenExchangeBody,
   verifyCallbackHmac,
+  verifyCallbackHmacDetailed,
 } from "./oauth";
 import { createTaxonomyAccumulator, parseJsonl } from "./taxonomy-aggregate";
 import { LeakyBucket } from "./throttle";
@@ -139,52 +141,85 @@ describe("OAuth", () => {
     expect(isValidShopDomain("-leading-dash.myshopify.com")).toBe(false);
   });
 
-  it("verifies a genuine callback HMAC", () => {
-    const params = new URLSearchParams({
-      code: "the-code",
-      shop: "example-store.myshopify.com",
-      state: "nonce",
-      timestamp: "1700000000",
-    });
-    const message = [...params.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([key, value]) => `${key}=${value}`)
-      .join("&");
-    params.set("hmac", createHmac("sha256", SECRET).update(message).digest("hex"));
+  /** Signs a message the way Shopify does, for building fixtures. */
+  const sign = (message: string): string =>
+    createHmac("sha256", SECRET).update(message).digest("hex");
 
-    expect(verifyCallbackHmac(params, SECRET)).toBe(true);
+  it("verifies a genuine callback HMAC", () => {
+    const signed =
+      "code=the-code&shop=example-store.myshopify.com&state=nonce&timestamp=1700000000";
+    expect(verifyCallbackHmac(`${signed}&hmac=${sign(signed)}`, SECRET)).toBe(true);
+  });
+
+  it("keeps a percent-encoded value encoded in the signed message", () => {
+    // This is the bug. `host` is base64 and carries `=` padding, which arrives
+    // as %3D. Parsing the callback with URLSearchParams decoded it, so the
+    // message being signed no longer matched the bytes Shopify signed — and
+    // every callback carrying a host failed with a perfectly correct secret.
+    const raw =
+      "code=the-code&host=ZXhhbXBsZS1zdG9yZS5teXNob3BpZnkuY29tL2FkbWlu%3D%3D" +
+      "&shop=example-store.myshopify.com&state=nonce&timestamp=1700000000";
+
+    const { encoded, decoded } = callbackMessages(raw);
+    expect(encoded).toContain("%3D%3D");
+    expect(decoded).toContain("==");
+    expect(encoded).not.toBe(decoded);
+
+    const result = verifyCallbackHmacDetailed(`${raw}&hmac=${sign(encoded)}`, SECRET);
+    expect(result.ok).toBe(true);
+    expect(result.variant).toBe("encoded");
+  });
+
+  it("still accepts a callback Shopify signed in its decoded form", () => {
+    const raw =
+      "code=the-code&host=ZXhhbXBsZQ%3D%3D&shop=example-store.myshopify.com&timestamp=1700000000";
+    const result = verifyCallbackHmacDetailed(
+      `${raw}&hmac=${sign(callbackMessages(raw).decoded)}`,
+      SECRET,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.variant).toBe("decoded");
+  });
+
+  it("signs every parameter except hmac, signature included", () => {
+    // The 2026-07 docs remove only hmac. This function also dropped
+    // `signature`, an app-proxy parameter — and dropping something Shopify did
+    // sign is exactly how the message comes out wrong.
+    const { keys } = callbackMessages(
+      "code=c&hmac=deadbeef&shop=example-store.myshopify.com&signature=abc&timestamp=1",
+    );
+    expect(keys).toEqual(["code", "shop", "signature", "timestamp"]);
+    expect(keys).not.toContain("hmac");
+  });
+
+  it("sorts lexicographically by key and joins as key=value with &", () => {
+    expect(callbackMessages("timestamp=3&code=1&shop=2&hmac=x").encoded).toBe(
+      "code=1&shop=2&timestamp=3",
+    );
   });
 
   it("rejects a tampered callback", () => {
-    const params = new URLSearchParams({
-      code: "the-code",
-      shop: "example-store.myshopify.com",
-      timestamp: "1700000000",
-    });
-    const message = [...params.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([key, value]) => `${key}=${value}`)
-      .join("&");
-    params.set("hmac", createHmac("sha256", SECRET).update(message).digest("hex"));
-
+    const signed = "code=the-code&shop=example-store.myshopify.com&timestamp=1700000000";
     // Swapping the shop after signing is the attack that matters: it would
     // point the token exchange at a store the attacker controls.
-    params.set("shop", "evil-store.myshopify.com");
-    expect(verifyCallbackHmac(params, SECRET)).toBe(false);
+    const tampered = "code=the-code&shop=evil-store.myshopify.com&timestamp=1700000000";
+    expect(verifyCallbackHmac(`${tampered}&hmac=${sign(signed)}`, SECRET)).toBe(false);
   });
 
   it("rejects a missing, empty or malformed hmac instead of throwing", () => {
-    const params = new URLSearchParams({ shop: "example-store.myshopify.com" });
-    expect(verifyCallbackHmac(params, SECRET)).toBe(false);
+    const signed = "shop=example-store.myshopify.com";
+    expect(verifyCallbackHmac(signed, SECRET)).toBe(false);
+    expect(verifyCallbackHmac(`${signed}&hmac=`, SECRET)).toBe(false);
+    expect(verifyCallbackHmac(`${signed}&hmac=zz-not-hex`, SECRET)).toBe(false);
+    expect(verifyCallbackHmac(`${signed}&hmac=ab`, SECRET)).toBe(false);
+  });
 
-    params.set("hmac", "");
-    expect(verifyCallbackHmac(params, SECRET)).toBe(false);
-
-    params.set("hmac", "zz-not-hex");
-    expect(verifyCallbackHmac(params, SECRET)).toBe(false);
-
-    params.set("hmac", "ab");
-    expect(verifyCallbackHmac(params, SECRET)).toBe(false);
+  it("reports both digests, so one debug run settles which Shopify used", () => {
+    const result = verifyCallbackHmacDetailed("code=c&shop=s&hmac=deadbeef", SECRET);
+    expect(result.ok).toBe(false);
+    expect(result.computed.encoded).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.computed.decoded).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.messages.hmac).toBe("deadbeef");
   });
 
   it("compares the state nonce without crashing on a missing one", () => {
