@@ -90,11 +90,16 @@ pnpm shopify:doctor     # prints SHOPIFY_LOCATION_ID and SHOPIFY_POS_PUBLICATION
 pnpm taxonomy:sync      # fills the taxonomy collection from the live catalogue
 ```
 
+Every run prints the authorize URL in full before it touches the browser, so if
+what opens does not match, the URL was mangled on the way out rather than built
+wrong. Paste it by hand if nothing opens.
+
 If the callback is rejected with an HMAC error, re-run it as
-`SHOPIFY_OAUTH_DEBUG=1 pnpm shopify:install`. It prints the raw callback query,
-both candidate signed messages and both digests beside the one Shopify sent, so
-a single run says which construction is right. The dump contains the shop domain
-and the one-time code but never the client secret.
+`pnpm shopify:install --debug`. It prints the raw callback query, both candidate
+signed messages and both digests beside the one Shopify sent, so a single run
+says which construction is right. The dump contains the shop domain and the
+one-time code but never the client secret. (A flag rather than an environment
+variable because `VAR=1 pnpm …` is bash syntax that PowerShell rejects outright.)
 
 `shopify:install` exists because there is no longer a way to copy a token out of
 the admin UI: Dev Dashboard apps do not show a per-install token and legacy

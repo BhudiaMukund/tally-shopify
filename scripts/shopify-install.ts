@@ -11,10 +11,12 @@
  * exchanges the code, and prints the token.
  *
  * The redirect URI it uses must be listed on the app in the Dev Dashboard.
+ *
+ *   pnpm shopify:install           normal run
+ *   pnpm shopify:install --debug   also dump the HMAC message and digests
  */
 import { randomUUID, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { spawn } from "node:child_process";
 
 import {
   buildAuthorizeUrl,
@@ -27,11 +29,22 @@ import {
   type HmacResult,
 } from "@/lib/shopify/oauth";
 
+import { openBrowser } from "@/lib/open-browser";
+
 import { loadEnvFiles } from "./load-env";
 
 const PORT = Number(process.env.SHOPIFY_OAUTH_PORT ?? 3456);
 const CALLBACK_PATH = "/auth/callback";
-const DEBUG = process.env.SHOPIFY_OAUTH_DEBUG === "1";
+
+/**
+ * `--debug`, not an environment variable.
+ *
+ * `SHOPIFY_OAUTH_DEBUG=1 pnpm shopify:install` is bash syntax. PowerShell reads
+ * the assignment as a command name and fails with "is not recognized as the
+ * name of a cmdlet", so the script never runs at all — and this is a Windows
+ * project. A flag works the same way in every shell.
+ */
+const DEBUG = process.argv.slice(2).includes("--debug");
 
 /**
  * Prints everything needed to work out why a signature did not match: the
@@ -49,8 +62,8 @@ function dumpHmac(rawQuery: string, result: HmacResult): void {
   console.log(`\n${"=".repeat(64)}\nHMAC debug`);
   line("raw callback query string, exactly as received:", rawQuery);
   line("parameters signed (hmac removed), sorted:", result.messages.keys.join(", "));
-  line("message — values left percent-encoded:", result.messages.encoded);
-  line("message — values URL-decoded:", result.messages.decoded);
+  line("message - values left percent-encoded:", result.messages.encoded);
+  line("message - values URL-decoded:", result.messages.decoded);
   line("digest from the encoded message:", result.computed.encoded);
   line("digest from the decoded message:", result.computed.decoded);
   line("hmac Shopify sent:", result.messages.hmac ?? "(none)");
@@ -65,18 +78,6 @@ function required(name: string, hint: string): string {
   if (value === undefined || value.trim() === "")
     throw new UsageError(`${name} is not set. ${hint}`);
   return value.trim();
-}
-
-/** Best effort. If it does not open, the URL is printed anyway. */
-function openBrowser(url: string): void {
-  const command =
-    process.platform === "win32" ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  try {
-    spawn(command, args, { stdio: "ignore", detached: true }).unref();
-  } catch {
-    // Printed below regardless.
-  }
 }
 
 function reply(response: ServerResponse, status: number, title: string, detail: string): void {
@@ -125,8 +126,8 @@ function waitForCallback(expectedState: string, clientSecret: string): Promise<C
       if (DEBUG) dumpHmac(rawQuery, hmac);
       if (!hmac.ok) {
         fail(
-          "The request HMAC did not verify. Re-run with SHOPIFY_OAUTH_DEBUG=1 to " +
-            "see the signed message, or check SHOPIFY_API_SECRET.",
+          "The request HMAC did not verify. Re-run with --debug to see the " +
+            "signed message, or check SHOPIFY_API_SECRET.",
         );
         return;
       }
@@ -207,7 +208,13 @@ async function main(): Promise<void> {
   console.log(`Scopes: ${REQUIRED_SCOPES.join(", ")}`);
   console.log(`\nThis redirect URL must be listed on the app in the Dev Dashboard:`);
   console.log(`  ${redirectUri}`);
-  console.log(`\nOpening your browser. If nothing happens, paste this in:\n  ${authorizeUrl}\n`);
+
+  // Printed on every run, before the browser is touched and whatever the flags.
+  // It is the one thing worth seeing if anything downstream goes wrong: if what
+  // the browser opens does not match this, the URL was mangled on the way out,
+  // not built wrong.
+  console.log(`\n${"-".repeat(64)}\nAuthorize URL:\n\n${authorizeUrl}\n${"-".repeat(64)}`);
+  console.log(`\nOpening your browser. If nothing opens, paste the URL above.\n`);
 
   const waiting = waitForCallback(state, clientSecret);
   openBrowser(authorizeUrl);
