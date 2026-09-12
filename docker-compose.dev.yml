@@ -1,7 +1,8 @@
-# Local development stack: Mongo, Valkey and MinIO.
+# Local development stack: Mongo, Valkey and Garage.
 #
 #   docker compose -f docker-compose.dev.yml up -d
 #   pnpm db:indexes
+#   pnpm garage:setup
 #
 # The app itself is not in here — it runs on the host with `pnpm dev`, which is
 # what the hostnames below assume. Production is five Coolify resources, and
@@ -45,45 +46,35 @@ services:
       timeout: 5s
       retries: 20
 
-  # quay.io, not Docker Hub: MinIO stopped publishing these images there, and
-  # `minio/minio` now fails to pull with a confusing "repository does not exist".
-  minio:
-    image: quay.io/minio/minio:latest
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
-    ports:
-      - "9000:9000" # S3 API
-      - "9001:9001" # console
+  # The S3-compatible store presigned uploads go to (commit 9). Spiked against
+  # MinIO first: PutBucketCors is implemented and a real cross-origin browser
+  # PUT against a presigned URL works, so it stands in directly.
+  #
+  # No init container here the way minio-init used to run `mc` commands —
+  # Garage's CLI has no equivalent of `mc anonymous set` or a one-line bucket
+  # setup, and CORS specifically is an S3-API-only operation (no CLI command
+  # exists for it at all). `pnpm garage:setup` does all of it — layout, bucket,
+  # key, CORS — from the host, using the same `@aws-sdk/client-s3` this app
+  # uses for real, so the setup path exercises the real client rather than a
+  # separate tool's idea of the same operation.
+  garage:
+    image: dxflrs/garage:v1.0.1
     volumes:
-      - minio-data:/data
+      - ./garage.dev.toml:/etc/garage.toml
+      - garage-data:/data
+    ports:
+      - "3900:3900" # S3 API
+      - "3901:3901" # inter-node RPC (unused at replication_factor 1, exposed for parity with prod)
+      - "3902:3902" # web (unused — nothing here serves images as a static site)
+      - "3903:3903" # admin API
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "/garage", "status"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 10s
 
-  # Creates the bucket and makes its objects readable without a signature, so
-  # the image URLs a draft carries work in dev by just being URLs. Production
-  # serves them through a proxy or presigns them — do not copy this policy.
-  minio-init:
-    image: quay.io/minio/mc:latest
-    depends_on:
-      minio:
-        condition: service_healthy
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - >
-        mc alias set local http://minio:9000
-        ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin} &&
-        mc mb --ignore-existing local/${S3_BUCKET:-tally} &&
-        mc anonymous set download local/${S3_BUCKET:-tally}
-
 volumes:
   mongo-data:
   valkey-data:
-  minio-data:
+  garage-data:
