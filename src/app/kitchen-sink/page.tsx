@@ -139,7 +139,7 @@ export default function KitchenSink() {
             <Swatch token="card" hex="#FFFFFF" note="Raised surface" />
             <Swatch token="ink" hex="#14181F" note="Text" />
             <Swatch token="ink-soft" hex="#5A6472" note="Secondary text" />
-            <Swatch token="accent" hex="#E8175D" note="Primary action only" />
+            <Swatch token="accent" hex="#D61455" note="Primary action only" />
           </ul>
           <ul className="mt-6 flex flex-wrap gap-4">
             <Swatch token="ok" hex="#0F8A5F" note="Matched, saved" />
@@ -152,44 +152,74 @@ export default function KitchenSink() {
             <Swatch token="warn-ink" hex="#9B5B00" note="Text-safe --warn" />
           </ul>
 
-          <table className="border-line mt-8 w-full border-t text-sm">
-            <caption className="text-ink-soft pt-4 pb-3 text-left text-sm">
-              Measured against WCAG 1.4.3, both surfaces the app actually paints text on.
-            </caption>
-            <thead>
-              <tr className="text-ink-soft border-line border-b text-left text-xs">
-                <th className="py-2 font-medium">As text</th>
-                <th className="py-2 text-right font-medium">on --card</th>
-                <th className="py-2 text-right font-medium">on --paper</th>
-              </tr>
-            </thead>
-            <tbody className="divide-line divide-y font-mono text-xs tabular-nums">
-              {[
-                ["--ink-soft", "6.00", "5.30", true],
-                ["--stop", "5.66", "5.00", true],
-                ["--ok-ink", "5.42", "4.78", true],
-                ["--warn-ink", "5.40", "4.76", true],
-                ["--accent", "4.46", "3.93", false],
-                ["--ok", "4.36", "3.84", false],
-                ["--warn", "3.46", "3.06", false],
-              ].map(([token, card, paper, passes]) => (
-                <tr key={token as string} className={passes ? "text-ink" : "text-ink-soft"}>
-                  <td className="py-2">{token}</td>
-                  <td className="py-2 text-right">{card}</td>
-                  <td className="py-2 text-right">{paper}</td>
+          <div className="mt-10 grid gap-x-10 gap-y-8 sm:grid-cols-2">
+            <table className="border-line w-full border-t text-sm">
+              <caption className="text-ink-soft pt-4 pb-3 text-left text-sm">
+                <span className="text-ink font-medium">Colour set as text.</span> Both surfaces the
+                app actually paints on. The paper column is the binding one, and the one easy to
+                forget.
+              </caption>
+              <thead>
+                <tr className="text-ink-soft border-line border-b text-left text-xs">
+                  <th className="py-2 font-medium">Token</th>
+                  <th className="py-2 text-right font-medium">--card</th>
+                  <th className="py-2 text-right font-medium">--paper</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-line text-2xs divide-y font-mono tabular-nums">
+                {[
+                  ["--ink-soft", "6.00", "5.30", true],
+                  ["--stop", "5.66", "5.00", true],
+                  ["--ok-ink", "5.42", "4.78", true],
+                  ["--warn-ink", "5.40", "4.76", true],
+                  ["--ok", "4.36", "3.84", false],
+                  ["--warn", "3.46", "3.06", false],
+                ].map(([token, card, paper, passes]) => (
+                  <tr key={token as string} className={passes ? "text-ink" : "text-ink-soft"}>
+                    <td className="py-2.5">{token}</td>
+                    <td className="py-2.5 text-right">{card}</td>
+                    <td className="py-2.5 text-right">{paper}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-          <p className="text-ink-soft mt-6 max-w-prose text-sm">
-            The rows in grey are below 4.5:1 and are fills, not text.{" "}
+            <table className="border-line w-full border-t text-sm">
+              <caption className="text-ink-soft pt-4 pb-3 text-left text-sm">
+                <span className="text-ink font-medium">Colour used as a fill</span>, measured
+                against the white label sitting on it.
+              </caption>
+              <thead>
+                <tr className="text-ink-soft border-line border-b text-left text-xs">
+                  <th className="py-2 font-medium">Token</th>
+                  <th className="py-2 text-right font-medium">white label</th>
+                </tr>
+              </thead>
+              <tbody className="divide-line text-2xs divide-y font-mono tabular-nums">
+                {[
+                  ["--accent", "5.13"],
+                  ["--accent-deep", "6.50"],
+                  ["--stop", "5.66"],
+                  ["--stop-deep", "7.40"],
+                ].map(([token, white]) => (
+                  <tr key={token} className="text-ink">
+                    <td className="py-2.5">{token}</td>
+                    <td className="py-2.5 text-right">{white}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-ink-soft mt-8 max-w-prose text-sm">
+            The two grey rows are below 4.5:1 and are never set as text — they are the fills and
+            glyph strokes that badges use.{" "}
             <span className="text-ink font-medium">
-              Note that --accent measures 4.46:1 on white, not the 4.6 the build plan claims
-            </span>{" "}
-            — white on a raspberry button is marginally under the floor at the md size, where the
-            label is 16px. Darkening the token to #D61455 would fix it; that is a brand decision, so
-            it has not been made here.
+              --accent was #E8175D and measured 4.46:1 under a white label
+            </span>
+            , which fails for the 16px label on the md button. It is now #D61455 at 5.13:1, the same
+            hue with the light taken out of it, and --accent-deep moved with it so a press still
+            reads as a press.
           </p>
           <p className="text-ink-soft mt-3 max-w-prose text-sm">
             Where a status word genuinely wants to be coloured, use the ink variants:{" "}

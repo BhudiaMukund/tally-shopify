@@ -13,14 +13,20 @@
   --color-card: #ffffff;
   --color-ink: #14181f;
   --color-ink-soft: #5a6472;
-  --color-accent: #e8175d;
+  /* Raspberry, primary action only. #E8175D was the original and measured
+     4.46:1 under a white label — under the floor on the most-pressed control
+     in the app. This is the same hue darkened until it clears: 5.13:1. */
+  --color-accent: #d61455;
   --color-ok: #0f8a5f;
   --color-warn: #c77700;
   --color-stop: #c42b1c;
   --color-line: #d3dae3;
 
-  /* Pressed/hover derivations. Never a fill in their own right. */
-  --color-accent-deep: #c9114e;
+  /* Pressed/hover derivations. Never a fill in their own right.
+     --accent-deep tracks the accent: 28% less light, which is the same press
+     step the original pair had. Left at the old #C9114E it would have been a
+     13% step off the darker accent, and the press would read as half a press. */
+  --color-accent-deep: #b91048;
   --color-stop-deep: #a52215;
 
   /* Text-safe status hues.
