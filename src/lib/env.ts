@@ -39,6 +39,14 @@ const envSchema = z.object({
     .string()
     .regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/, "must be a <store>.myshopify.com domain"),
   SHOPIFY_ADMIN_TOKEN: z.string().min(1),
+  /**
+   * The app's client id and secret, from the Shopify Dev Dashboard. Needed
+   * only by `pnpm shopify:install`, which exchanges them for the admin token
+   * above — the running app never uses them, so they stay optional and the
+   * script checks for them itself with a message naming where to find them.
+   */
+  SHOPIFY_API_KEY: z.string().min(1).optional(),
+  SHOPIFY_API_SECRET: z.string().min(1).optional(),
   SHOPIFY_API_VERSION: z.string().regex(/^\d{4}-\d{2}$/, "must look like 2026-07"),
   SHOPIFY_LOCATION_ID: z
     .string()

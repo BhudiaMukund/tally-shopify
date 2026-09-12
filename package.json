@@ -12,6 +12,9 @@
     "start": "next start",
     "db:indexes": "tsx scripts/ensure-indexes.ts",
     "create-user": "tsx scripts/create-user.ts",
+    "shopify:install": "tsx scripts/shopify-install.ts",
+    "shopify:doctor": "tsx scripts/shopify-doctor.ts",
+    "taxonomy:sync": "tsx scripts/sync-taxonomy.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -40,6 +43,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.6.0",
+    "undici": "^8.10.2",
     "zod": "^4.6.2"
   },
   "devDependencies": {
