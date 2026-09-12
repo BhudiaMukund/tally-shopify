@@ -19,7 +19,10 @@ const envSchema = z.object({
   // mongo — a single-node replica set, for transactions and change streams
   MONGODB_URI: z
     .string()
-    .regex(/^mongodb(\+srv)?:\/\//, "must start with mongodb:// or mongodb+srv://"),
+    .regex(
+      /^mongodb(\+srv)?:\/\/[^/?]+\/[^/?]+(\?|$)/,
+      "must include the database name, e.g. mongodb://localhost:27017/tally?replicaSet=rs0",
+    ),
 
   // queue
   REDIS_URL: z.string().regex(/^rediss?:\/\//, "must start with redis:// or rediss://"),
@@ -166,6 +169,30 @@ export function parseEnv(source: RawEnv): Env {
   missing.sort();
   invalid.sort((a, b) => a.key.localeCompare(b.key));
   throw new EnvValidationError(missing, invalid);
+}
+
+/**
+ * Validates and returns a single variable, ignoring the rest of the environment.
+ *
+ * For modules and scripts that genuinely need one key: `pnpm db:indexes` should
+ * run against a `.env.local` that has a Mongo URI in it and nothing else yet —
+ * the Shopify IDs don't exist until `pnpm shopify:doctor` prints them, two
+ * commits later. The app still validates everything at boot; this is for the
+ * paths that aren't the app.
+ */
+export function envVar<K extends keyof Env>(key: K): Env[K] {
+  const raw = process.env[key];
+  const value = typeof raw === "string" && raw.trim() === "" ? undefined : raw;
+  const result = envSchema.shape[key].safeParse(value);
+
+  if (!result.success) {
+    const reason = result.error.issues[0]?.message ?? "is invalid";
+    throw value === undefined
+      ? new EnvValidationError([key], [])
+      : new EnvValidationError([], [{ key, reason }]);
+  }
+
+  return result.data as Env[K];
 }
 
 let cached: Env | undefined;

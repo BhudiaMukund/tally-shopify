@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { EnvValidationError, parseEnv } from "@/lib/env";
+import { EnvValidationError, envVar, parseEnv } from "@/lib/env";
 
 /** A complete, syntactically valid environment. No real store values. */
 function validEnv(): Record<string, string> {
@@ -186,6 +186,74 @@ describe("parseEnv — AI provider keys", () => {
       const failure = error as EnvValidationError;
       expect(failure.missing).toEqual([]);
       expect(failure.invalid.map((entry) => entry.key)).toEqual(["AI_PROVIDER"]);
+    }
+  });
+});
+
+describe("MONGODB_URI", () => {
+  function reasonFor(uri: string): string | undefined {
+    try {
+      parseEnv({ ...validEnv(), MONGODB_URI: uri });
+      return undefined;
+    } catch (error) {
+      return (error as EnvValidationError).invalid.find((e) => e.key === "MONGODB_URI")?.reason;
+    }
+  }
+
+  it("accepts the shapes the dev stack and the deploy actually use", () => {
+    expect(reasonFor("mongodb://localhost:27017/tally?replicaSet=rs0")).toBeUndefined();
+    expect(reasonFor("mongodb://user:pass@mongo:27017/tally?replicaSet=rs0&authSource=admin")).toBe(
+      undefined,
+    );
+    expect(reasonFor("mongodb+srv://user:pass@cluster.example.com/tally")).toBeUndefined();
+  });
+
+  it("rejects a URI with no database name", () => {
+    // `client.db()` takes the name from the URI. Without one the driver quietly
+    // uses "test", and the app runs against an empty database that looks fine.
+    expect(reasonFor("mongodb://localhost:27017")).toContain("database name");
+    expect(reasonFor("mongodb://localhost:27017/?replicaSet=rs0")).toContain("database name");
+  });
+});
+
+describe("envVar", () => {
+  const original = process.env.MONGODB_URI;
+  afterEach(() => {
+    if (original === undefined) delete process.env.MONGODB_URI;
+    else process.env.MONGODB_URI = original;
+  });
+
+  it("validates one variable without demanding the whole environment", () => {
+    // `pnpm db:indexes` has to run before the Shopify IDs exist (commit 5).
+    process.env.MONGODB_URI = "mongodb://localhost:27017/tally?replicaSet=rs0";
+    expect(envVar("MONGODB_URI")).toBe("mongodb://localhost:27017/tally?replicaSet=rs0");
+  });
+
+  it("reports a missing key as missing and a bad one as invalid", () => {
+    delete process.env.MONGODB_URI;
+    try {
+      envVar("MONGODB_URI");
+      expect.unreachable("expected envVar to throw");
+    } catch (error) {
+      expect((error as EnvValidationError).missing).toEqual(["MONGODB_URI"]);
+    }
+
+    process.env.MONGODB_URI = "postgres://localhost/tally";
+    try {
+      envVar("MONGODB_URI");
+      expect.unreachable("expected envVar to throw");
+    } catch (error) {
+      expect((error as EnvValidationError).invalid.map((e) => e.key)).toEqual(["MONGODB_URI"]);
+    }
+  });
+
+  it("applies the schema default when the key is unset", () => {
+    const model = process.env.GEMINI_MODEL;
+    delete process.env.GEMINI_MODEL;
+    try {
+      expect(envVar("GEMINI_MODEL")).toBe("gemini-flash-latest");
+    } finally {
+      if (model !== undefined) process.env.GEMINI_MODEL = model;
     }
   });
 });

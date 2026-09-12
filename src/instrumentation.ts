@@ -9,6 +9,7 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_PHASE === "phase-production-build") return;
   if (process.env.SKIP_ENV_VALIDATION === "1") return;
 
-  const { assertEnvOrExit } = await import("@/lib/boot");
+  const { assertEnvOrExit, ensureIndexesAtBoot } = await import("@/lib/boot");
   assertEnvOrExit();
+  await ensureIndexesAtBoot();
 }

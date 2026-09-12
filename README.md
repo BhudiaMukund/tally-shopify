@@ -11,16 +11,21 @@ key and never wait for review; new products always do.
 
 - Node 22+
 - pnpm 10 (`corepack enable pnpm`)
-- MongoDB as a single-node replica set, Valkey and MinIO — a `docker-compose.dev.yml` lands with
-  the database commit
+- Docker, for the local MongoDB, Valkey and MinIO in [docker-compose.dev.yml](docker-compose.dev.yml)
 
 ## Setup
 
 ```bash
 pnpm install
 cp .env.example .env.local   # then fill in every key
+docker compose -f docker-compose.dev.yml up -d
+pnpm db:indexes
 pnpm dev
 ```
+
+The compose stack is Mongo, Valkey and MinIO with the bucket created. Mongo runs as a **single-node
+replica set** — transactions and change streams need one — and without auth, on a port bound to
+your own machine. The defaults in `.env.example` already point at it.
 
 Every variable in `.env.example` is required. `src/lib/env.ts` validates them with Zod and the
 server refuses to start if any are missing, printing the full list at once rather than one per
@@ -28,15 +33,16 @@ restart.
 
 ## Scripts
 
-| Script           | What it does                              |
-| ---------------- | ----------------------------------------- |
-| `pnpm dev`       | Dev server                                |
-| `pnpm build`     | Production build (`output: 'standalone'`) |
-| `pnpm start`     | Serve the production build                |
-| `pnpm typecheck` | `next typegen` then `tsc --noEmit`        |
-| `pnpm lint`      | ESLint                                    |
-| `pnpm format`    | Prettier                                  |
-| `pnpm test`      | Vitest                                    |
+| Script            | What it does                              |
+| ----------------- | ----------------------------------------- |
+| `pnpm dev`        | Dev server                                |
+| `pnpm build`      | Production build (`output: 'standalone'`) |
+| `pnpm start`      | Serve the production build                |
+| `pnpm typecheck`  | `next typegen` then `tsc --noEmit`        |
+| `pnpm lint`       | ESLint                                    |
+| `pnpm format`     | Prettier                                  |
+| `pnpm test`       | Vitest                                    |
+| `pnpm db:indexes` | Create any missing Mongo index            |
 
 CI runs typecheck, lint and test on every push and pull request, plus a gitleaks scan of the full
 history. A pre-commit hook runs the same scan against the staged diff and fails closed — install
@@ -50,6 +56,8 @@ terminating TLS — the phone scanner needs a secure context, so plain http on a
 
 Configuration is entirely environment variables at run time; nothing is baked into a layer. A
 container started with an incomplete environment exits immediately and prints every missing key.
+Indexes are created on boot, so a fresh database needs no migration step; `pnpm db:indexes` does
+the same thing by hand.
 
 ## This repo is public
 
