@@ -16,6 +16,7 @@ import {
 import type { EngineRequest } from "@/lib/scan/engine";
 import { primeFeedback } from "@/lib/scan/feedback";
 import type { ScanEvent } from "@/lib/scan/types";
+import { useBarcodeLookup } from "@/lib/scan/use-barcode-lookup";
 import { useScanner } from "@/lib/scan/use-scanner";
 
 /**
@@ -37,6 +38,18 @@ import { useScanner } from "@/lib/scan/use-scanner";
  */
 const ManualEntry = dynamic(
   () => import("@/components/scan/manual-entry").then((m) => m.ManualEntry),
+  { ssr: false },
+);
+
+/**
+ * Everything a *resolved* scan needs — the count screen, the choosers, Radix
+ * Dialog and Radix Toast — deferred for the same reason: most of the visits to
+ * this route are a shift's worth of scans that never touch the manual-entry
+ * sheet, but every one of them touches this, so it loads on the first scan
+ * rather than at route load.
+ */
+const ScanResultSheet = dynamic(
+  () => import("@/components/scan/scan-result-sheet").then((m) => m.ScanResultSheet),
   { ssr: false },
 );
 
@@ -62,7 +75,22 @@ export function ScanScreen({ engine, debug }: ScanScreenProps) {
   const [manualLoaded, setManualLoaded] = useState(false);
   const primed = useRef(false);
 
-  const onScan = useCallback((event: ScanEvent) => setLastScan(event), []);
+  const { state: lookupState, lookup, reset: resetLookup } = useBarcodeLookup();
+  // As `manualLoaded` above: mounted on the first scan, then kept mounted so a
+  // toast fired on close keeps its screen time (see scan-result-sheet.tsx).
+  const [resultLoaded, setResultLoaded] = useState(false);
+  const resultOpen = lookupState.phase !== "idle";
+
+  const onScan = useCallback(
+    (event: ScanEvent) => {
+      setLastScan(event);
+      setResultLoaded(true);
+      lookup(event.barcode);
+    },
+    [lookup],
+  );
+  const onResultDone = useCallback(() => resetLookup(), [resetLookup]);
+
   // Destructured rather than kept as one object: `videoRef` makes the whole
   // return value look like a ref to the compiler's lint, and every read off it
   // is then a ref read during render.
@@ -75,7 +103,7 @@ export function ScanScreen({ engine, debug }: ScanScreenProps) {
     submit,
     setHidEnabled,
     getDiagnostics,
-  } = useScanner({ onScan, engine, paused: manualOpen });
+  } = useScanner({ onScan, engine, paused: manualOpen || resultOpen });
 
   const showDebug = useSyncExternalStore(
     subscribeToDebugPreference,
@@ -91,10 +119,10 @@ export function ScanScreen({ engine, debug }: ScanScreenProps) {
     startCamera();
   }, [startCamera]);
 
-  /** The sheet traps focus and owns the keyboard while it is open. */
+  /** Either sheet traps focus and owns the keyboard while it is open. */
   useEffect(() => {
-    setHidEnabled(!manualOpen);
-  }, [manualOpen, setHidEnabled]);
+    setHidEnabled(!manualOpen && !resultOpen);
+  }, [manualOpen, resultOpen, setHidEnabled]);
 
   /** `?debug=1` seeds the preference; the toggle owns it from then on. */
   useEffect(() => {
@@ -227,6 +255,19 @@ export function ScanScreen({ engine, debug }: ScanScreenProps) {
 
       {manualLoaded ? (
         <ManualEntry open={manualOpen} onOpenChange={setManualOpen} onSubmit={submit} />
+      ) : null}
+
+      {resultLoaded ? (
+        <ScanResultSheet
+          open={resultOpen}
+          onOpenChange={(open) => {
+            if (!open) resetLookup();
+          }}
+          lookup={lookupState.data}
+          error={lookupState.error}
+          reconciling={lookupState.reconciling}
+          onDone={onResultDone}
+        />
       ) : null}
     </main>
   );
