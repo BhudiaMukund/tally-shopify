@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 
+import type { LookupResponse } from "@/lib/scan/lookup-client";
+import {
+  distinctProductCount,
+  distinctVariantCount,
+  reconcileProducts,
+} from "@/lib/scan/reconcile-matches";
 import type { ScannerDiagnostics } from "@/lib/scan/types";
 
 /**
@@ -37,9 +43,17 @@ function Row({ label, value }: { label: string; value: string }) {
 export interface DebugPanelProps {
   read: () => ScannerDiagnostics;
   onClose: () => void;
+  /**
+   * The most recent lookup, if a scan has resolved one. Unlike the scanner
+   * counters above, this changes at most twice per scan (the cached-only
+   * phase, then the live one) rather than ten times a second, so it is a
+   * plain reactive prop rather than something polled off a ref.
+   */
+  lookup?: LookupResponse | null;
+  reconciling?: boolean;
 }
 
-export function DebugPanel({ read, onClose }: DebugPanelProps) {
+export function DebugPanel({ read, onClose, lookup = null, reconciling = false }: DebugPanelProps) {
   const [snapshot, setSnapshot] = useState<ScannerDiagnostics>(read);
 
   useEffect(() => {
@@ -48,6 +62,8 @@ export function DebugPanel({ read, onClose }: DebugPanelProps) {
   }, [read]);
 
   const engine = snapshot.engine === null ? "deciding…" : ENGINE_LABEL[snapshot.engine];
+
+  const products = lookup === null ? [] : reconcileProducts(lookup.products);
 
   return (
     <section
@@ -96,6 +112,22 @@ export function DebugPanel({ read, onClose }: DebugPanelProps) {
         />
         {snapshot.error === null ? null : <Row label="error" value={snapshot.error} />}
       </dl>
+
+      {lookup === null ? null : (
+        <>
+          <h2 className="font-display mt-3 mb-1 text-sm font-medium text-white">Lookup</h2>
+          <dl className="divide-y divide-white/10">
+            <Row label="state" value={lookup.state} />
+            <Row label="phase" value={reconciling ? "cached, confirming…" : "confirmed"} />
+            {/* This pair is what a "wrong screen" report needs first: does the
+                match count agree with the distinct product count, or is one
+                artificially inflated relative to the other. */}
+            <Row label="matched variants" value={`${distinctVariantCount(products)}`} />
+            <Row label="distinct products" value={`${distinctProductCount(products)}`} />
+            <Row label="pending drafts" value={`${lookup.pending.length}`} />
+          </dl>
+        </>
+      )}
 
       <p className="mt-2 text-white/45">
         Add <span className="font-mono">?engine=zxing</span> to force the fallback decoder.

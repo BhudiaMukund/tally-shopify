@@ -194,7 +194,14 @@ export function ScanScreen({ engine, debug }: ScanScreenProps) {
         </button>
       </header>
 
-      {showDebug ? <DebugPanel read={getDiagnostics} onClose={toggleDebug} /> : null}
+      {showDebug ? (
+        <DebugPanel
+          read={getDiagnostics}
+          onClose={toggleDebug}
+          lookup={lookupState.data}
+          reconciling={lookupState.reconciling}
+        />
+      ) : null}
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6">
         {cameraFailed ? (

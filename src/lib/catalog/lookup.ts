@@ -84,6 +84,15 @@ export interface BarcodeLookup {
   cached: ProductMatch[];
   pending: PendingMatch[];
   live: Promise<LiveResult>;
+  /**
+   * True when Shopify was never asked — `live` is then a resolved placeholder
+   * (`{ ok: true, products: [] }`), not a confirmed empty answer. `ok: true`
+   * there means "we didn't ask", and a caller that can't tell the difference
+   * (`live.ok ? live.products : cached`) answers every cached-only request
+   * with an empty catalogue regardless of what the mirror actually holds —
+   * see `settleLookup` below, which is what this field exists to fix.
+   */
+  cachedOnly: boolean;
   /** How long the mirror and the drafts took. The budget for this pair is tiny. */
   cachedMs: number;
 }
@@ -223,12 +232,15 @@ export async function lookupByBarcode(
     checkDigitOk: normalised.checkDigitOk,
   };
 
+  const cachedOnly = options.cachedOnly === true;
+
   if (!normalised.wellFormed) {
     return {
       ...base,
       cached: [],
       pending: [],
       live: Promise.resolve<LiveResult>({ ok: true, products: [], ms: 0 }),
+      cachedOnly,
       cachedMs: 0,
     };
   }
@@ -236,22 +248,37 @@ export async function lookupByBarcode(
   const startedAt = performance.now();
   // Started before the awaits below, so the round trip overlaps the local reads
   // instead of following them.
-  const live =
-    options.cachedOnly === true
-      ? Promise.resolve<LiveResult>({ ok: true, products: [], ms: 0 })
-      : lookupLive(normalised.digits, options.signal);
+  const live = cachedOnly
+    ? Promise.resolve<LiveResult>({ ok: true, products: [], ms: 0 })
+    : lookupLive(normalised.digits, options.signal);
 
   const [cached, pending] = await Promise.all([
     lookupCached(normalised.digits),
     lookupPending(normalised.digits),
   ]);
 
-  return { ...base, cached, pending, live, cachedMs: Math.round(performance.now() - startedAt) };
+  return {
+    ...base,
+    cached,
+    pending,
+    live,
+    cachedOnly,
+    cachedMs: Math.round(performance.now() - startedAt),
+  };
 }
 
-/** Awaits the live half. For an API route, a script, or a test that wants one object. */
+/**
+ * Awaits the live half and decides which answer to act on.
+ *
+ * Cached-only skips Shopify on purpose (the phone's fast first paint,
+ * BUILD_PLAN §1) — `lookup.cachedOnly` is what tells this apart from Shopify
+ * genuinely confirming zero matches, since both arrive as `live.ok === true`.
+ * Getting this wrong doesn't fail loudly: it silently answers every
+ * cached-only request as "nothing here", which downstream renders as a
+ * confident, wrong screen rather than an error.
+ */
 export async function settleLookup(lookup: BarcodeLookup): Promise<SettledLookup> {
   const live = await lookup.live;
-  const products = live.ok ? live.products : lookup.cached;
+  const products = lookup.cachedOnly ? lookup.cached : live.ok ? live.products : lookup.cached;
   return { ...lookup, live, products, state: lookupStateOf({ ...lookup, products }) };
 }
