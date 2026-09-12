@@ -1,0 +1,89 @@
+# Local development stack: Mongo, Valkey and MinIO.
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   pnpm db:indexes
+#
+# The app itself is not in here — it runs on the host with `pnpm dev`, which is
+# what the hostnames below assume. Production is five Coolify resources, and
+# gets real credentials; nothing here is a secret, and nothing here should be
+# reachable from outside your machine.
+name: tally-dev
+
+services:
+  # Standalone, to match the Coolify deploy. Nothing in Tally uses a
+  # transaction or a change stream — every write touches one document — and a
+  # local replica set would mean the first code that reached for one passed
+  # here and failed only after deploy.
+  #
+  # No `--auth`: the port is bound to your own machine and there is nothing in
+  # here worth protecting. Production gets credentials.
+  mongo:
+    image: mongo:8
+    command: ["--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    # Appendonly so a restart doesn't drop queued enrichment jobs.
+    command: ["valkey-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # quay.io, not Docker Hub: MinIO stopped publishing these images there, and
+  # `minio/minio` now fails to pull with a confusing "repository does not exist".
+  minio:
+    image: quay.io/minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Creates the bucket and makes its objects readable without a signature, so
+  # the image URLs a draft carries work in dev by just being URLs. Production
+  # serves them through a proxy or presigns them — do not copy this policy.
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mc alias set local http://minio:9000
+        ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin} &&
+        mc mb --ignore-existing local/${S3_BUCKET:-tally} &&
+        mc anonymous set download local/${S3_BUCKET:-tally}
+
+volumes:
+  mongo-data:
+  valkey-data:
+  minio-data:
