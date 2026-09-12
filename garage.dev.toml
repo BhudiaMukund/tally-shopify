@@ -1,0 +1,36 @@
+# Local development config for Garage — the MinIO replacement (spiked and
+# confirmed: PutBucketCors is implemented, and a real cross-origin browser
+# `fetch()` PUT against a presigned URL works end to end).
+#
+# `rpc_secret` below is not a secret worth protecting — the same reasoning as
+# Mongo running with no `--auth` in dev (docker-compose.dev.yml): the port is
+# bound to your own machine, there is nothing here to protect, and production
+# generates its own. Never reuse this value anywhere real.
+#
+# https://garagehq.deuxfleurs.fr/documentation/reference-manual/configuration/
+
+metadata_dir = "/data/meta"
+data_dir = "/data/data"
+db_engine = "sqlite"
+
+# One node, no redundancy. This is a laptop, not a cluster.
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "ef5545b8b4cd9e3a7afa83753cc723ec9dd34f124074162e0def7fc9410f0b7f" # gitleaks:allow
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"
+
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.garage.localhost"
+index = "index.html"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "tally-dev-admin-token-not-a-secret"
+metrics_token = "tally-dev-metrics-token-not-a-secret"

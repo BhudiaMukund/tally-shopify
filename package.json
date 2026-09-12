@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "db:indexes": "tsx scripts/ensure-indexes.ts",
+    "garage:setup": "tsx scripts/garage-setup.ts",
     "create-user": "tsx scripts/create-user.ts",
     "shopify:install": "tsx scripts/shopify-install.ts",
     "shopify:doctor": "tsx scripts/shopify-doctor.ts",
@@ -34,6 +35,8 @@
     "*.{js,mjs,cjs,json,css,md,yml,yaml}": "prettier --write"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1131.0",
+    "@aws-sdk/s3-request-presigner": "^3.1131.0",
     "@node-rs/argon2": "^2.2.1",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-toast": "^1.2.23",

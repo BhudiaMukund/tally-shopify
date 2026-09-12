@@ -27,10 +27,14 @@ const envSchema = z.object({
   // queue
   REDIS_URL: z.string().regex(/^rediss?:\/\//, "must start with redis:// or rediss://"),
 
-  // object storage
+  // object storage — Garage (garage.dev.toml `s3_region` in dev). Not
+  // meaningful the way an AWS region is, but Garage rejects a request whose
+  // region doesn't match its own configuration, so it has to be a real value
+  // rather than a hardcoded constant that only happens to be right in dev.
   S3_ENDPOINT: z.url("must be an absolute URL, e.g. http://localhost:9000"),
   S3_PUBLIC_URL: z.url("must be an absolute URL"),
   S3_BUCKET: z.string().min(1),
+  S3_REGION: z.string().min(1).default("garage"),
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
 
