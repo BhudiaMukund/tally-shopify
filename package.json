@@ -38,6 +38,7 @@
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-toast": "^1.2.23",
     "@radix-ui/react-visually-hidden": "^1.2.11",
+    "@zxing/library": "^0.23.0",
     "clsx": "^2.1.1",
     "mongodb": "^7.6.0",
     "next": "16.3.4",
