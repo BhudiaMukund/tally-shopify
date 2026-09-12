@@ -4,20 +4,11 @@
  *
  * Safe to re-run: each set is replaced atomically, never appended to.
  */
-import { createInterface } from "node:readline";
-
-import { request } from "undici";
-
 import { closeDb, getDb } from "@/lib/db/client";
 import { taxonomy } from "@/lib/db/collections";
 import { taxonomyKey, taxonomySchema, type TaxonomyKey } from "@/lib/db/schemas/taxonomy";
+import { runBulkQueryAndStream } from "@/lib/shopify/bulk-result";
 import { closeShopifyClient } from "@/lib/shopify/client";
-import {
-  getBulkOperation,
-  isTerminal,
-  runBulkQuery,
-  type BulkOperation,
-} from "@/lib/shopify/operations/bulk-operation";
 import {
   allowedChoices,
   listMetafieldDefinitions,
@@ -31,76 +22,15 @@ import { applyTaxonomyRules, rareValues, RARE_VALUE_THRESHOLD } from "@/lib/taxo
 
 import { loadEnvFiles } from "./load-env";
 
-const POLL_INTERVAL_MS = 2_000;
-const POLL_TIMEOUT_MS = 10 * 60 * 1000;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function waitForBulk(id: string): Promise<BulkOperation> {
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
-  let last = "";
-
-  for (;;) {
-    const operation = await getBulkOperation(id);
-
-    // Only reprint when something changed; this loop runs for minutes.
-    const line = `  ${operation.status.toLowerCase()}, ${operation.objectCount} objects`;
-    if (line !== last) {
-      console.log(line);
-      last = line;
-    }
-
-    if (isTerminal(operation.status)) return operation;
-    if (Date.now() > deadline) {
-      throw new Error(`Bulk operation ${id} still ${operation.status} after 10 minutes.`);
-    }
-    await sleep(POLL_INTERVAL_MS);
-  }
-}
-
-/** Streams the JSONL rather than buffering it — the whole catalogue is in here. */
-async function streamJsonl(url: string, onLine: (value: unknown) => void): Promise<void> {
-  const response = await request(url, { method: "GET" });
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error(`Downloading the bulk result failed: HTTP ${response.statusCode}`);
-  }
-
-  const lines = createInterface({ input: response.body, crlfDelay: Infinity });
-  let lineNumber = 0;
-  for await (const line of lines) {
-    lineNumber += 1;
-    const trimmed = line.trim();
-    if (trimmed === "") continue;
-    try {
-      onLine(JSON.parse(trimmed));
-    } catch {
-      throw new Error(`Bulk result line ${lineNumber} is not valid JSON.`);
-    }
-  }
-}
-
 async function main(): Promise<void> {
   loadEnvFiles();
 
   console.log("\nStarting the bulk query over all products");
-  const started = await runBulkQuery(PRODUCT_TAXONOMY_BULK_QUERY);
-  const finished = await waitForBulk(started.id);
-
-  if (finished.status !== "COMPLETED") {
-    throw new Error(
-      `Bulk operation ${finished.status}${finished.errorCode ? ` (${finished.errorCode})` : ""}. ` +
-        "Nothing was written.",
-    );
-  }
-  if (finished.url === null) {
-    // A store with no products completes with no file. Not an error, but there
-    // is nothing to sync and overwriting the taxonomy with empty sets would be
-    // worse than leaving yesterday's.
-    throw new Error("The bulk operation completed with no result file. Nothing was written.");
-  }
-
   const accumulator = createTaxonomyAccumulator();
-  await streamJsonl(finished.url, (line) => accumulator.add(line));
+  await runBulkQueryAndStream(PRODUCT_TAXONOMY_BULK_QUERY, (line) => accumulator.add(line), {
+    onProgress: (operation) =>
+      console.log(`  ${operation.status.toLowerCase()}, ${operation.objectCount} objects`),
+  });
   const { values, productCount, referenceOnly } = accumulator.result();
 
   // Where a metafield definition constrains its values, those beat anything

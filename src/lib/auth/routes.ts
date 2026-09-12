@@ -24,6 +24,25 @@ export type RouteDecision =
   /** Already signed in and asking for the login screen. */
   | "home";
 
+/**
+ * Routes that authenticate themselves and must never be sent to a login form.
+ *
+ * Only the Shopify webhook, and only because Shopify has no cookie to send: the
+ * HMAC over the raw body is that route's authentication and it is fatal on
+ * mismatch (`src/lib/shopify/webhooks.ts`). Redirecting it to /login would turn
+ * every delivery into a 307 that Shopify counts as a failure, and after two
+ * days of those it removes the subscription — the mirror would go quietly
+ * stale rather than loudly broken.
+ *
+ * Nothing else belongs in here. `/api/inventory` writes to a live store and
+ * stays behind a session.
+ */
+const SELF_AUTHENTICATED_PREFIXES = ["/api/webhooks/"] as const;
+
+function isSelfAuthenticated(pathname: string): boolean {
+  return SELF_AUTHENTICATED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 /** Paths that additionally require the admin role. */
 function isAdminOnly(pathname: string): boolean {
   return pathname === "/admin" || pathname.startsWith("/admin/");
@@ -36,6 +55,7 @@ export function authorizeRoute(pathname: string, role: UserRole | undefined): Ro
   // holds a valid token, and this is the one route that can take it off them —
   // bouncing them to /login instead would send them straight back to /.
   if (pathname === SIGNED_OUT_PATH) return "allow";
+  if (isSelfAuthenticated(pathname)) return "allow";
 
   if (pathname === LOGIN_PATH) return signedIn ? "home" : "allow";
   if (!signedIn) return "sign-in";

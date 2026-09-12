@@ -33,6 +33,18 @@ describe("authorizeRoute", () => {
     expect(authorizeRoute("/api/inventory", "staff")).toBe("allow");
   });
 
+  it("lets the Shopify webhook through — it carries an HMAC, not a cookie", () => {
+    expect(authorizeRoute("/api/webhooks/shopify", undefined)).toBe("allow");
+    // A redirect to /login reads as a failed delivery, and two days of those
+    // and Shopify deletes the subscription.
+    expect(authorizeRoute("/api/webhooks/shopify", "staff")).toBe("allow");
+  });
+
+  it("does not open a route that merely looks like the webhook path", () => {
+    expect(authorizeRoute("/api/webhooks-admin", undefined)).toBe("sign-in");
+    expect(authorizeRoute("/admin/api/webhooks/shopify", undefined)).toBe("sign-in");
+  });
+
   it("bounces staff off the admin routes without pretending they are signed out", () => {
     // "forbid", not "sign-in": a login form is a useless answer to someone who
     // is already signed in as themselves.
