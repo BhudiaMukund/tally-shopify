@@ -1,4 +1,9 @@
 export {
+  activateInventoryAtLocation,
+  activateInventorySchema,
+  type ActivateInventoryOptions,
+} from "./activate-inventory";
+export {
   bulkOperationSchema,
   bulkOperationStatus,
   getBulkOperation,
@@ -23,8 +28,15 @@ export {
   findVariantsByBarcodeSchema,
   BARCODE_MATCH_LIMIT,
 } from "./find-variants-by-barcode";
+export { ensureInventoryTracked, ensureInventoryTrackedSchema } from "./ensure-inventory-tracked";
 export { getCatalogProduct, getCatalogProductSchema } from "./get-catalog-product";
 export { getShop, getShopSchema, type ShopInfo } from "./get-shop";
+export {
+  getVariantForInventory,
+  getVariantForInventorySchema,
+  type GetVariantForInventoryOptions,
+  type VariantInventoryState,
+} from "./get-variant-for-inventory";
 export { listLocations, listLocationsSchema, type ShopifyLocation } from "./list-locations";
 export {
   allowedChoices,
@@ -40,6 +52,15 @@ export {
   POS_APP_HANDLE,
   type ShopifyPublication,
 } from "./list-publications";
+export {
+  IDEMPOTENCY_RETRY_CODE,
+  setInventoryQuantities,
+  setInventoryQuantitiesSchema,
+  STALE_COMPARE_CODES,
+  type InventorySetQuantitiesUserError,
+  type SetInventoryQuantitiesParams,
+  type SetInventoryQuantitiesResult,
+} from "./set-inventory-quantities";
 export {
   createWebhookSubscription,
   listWebhookSubscriptions,
