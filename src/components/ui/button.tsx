@@ -78,7 +78,7 @@ export function Button({
   return (
     <button
       type={type}
-      disabled={disabled ?? loading}
+      disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={buttonClassName({
         variant,

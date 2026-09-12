@@ -9,6 +9,7 @@ import {
   DEFAULT_BOUNDS,
   parseCount,
   repeatDelay,
+  resolveStepBase,
   stepCount,
   type CountBounds,
 } from "./number-field.utils";
@@ -140,6 +141,20 @@ export function NumberField({
   const [draft, setDraft] = useState<string | null>(null);
   const text = draft ?? String(current);
 
+  /**
+   * A synchronous mirror of `draft`. The press-and-hold timer runs outside
+   * React, so its repeats would keep reading the draft captured by the render
+   * that started the hold — clearing state is not visible to them. The ref is,
+   * so the first step counts from the typed number and every repeat after it
+   * counts from the value that step committed.
+   */
+  const draftRef = useRef<string | null>(null);
+
+  function setDraftText(next: string | null) {
+    draftRef.current = next;
+    setDraft(next);
+  }
+
   const [bumping, setBumping] = useState(false);
 
   // The hold timer fires outside React's render, so it reads the latest value
@@ -162,8 +177,12 @@ export function NumberField({
   }
 
   function bump(direction: -1 | 1) {
-    setDraft(null);
-    commit(stepCount(latest.current.current, direction, latest.current.bounds));
+    // Step from the number on screen. Typing 50 over a committed 24 and then
+    // pressing + has to give 51, not 25 — silently dropping a correction on the
+    // count screen is how the wrong quantity reaches Shopify.
+    const base = resolveStepBase(draftRef.current, latest.current.current, latest.current.bounds);
+    setDraftText(null);
+    commit(stepCount(base, direction, latest.current.bounds));
   }
 
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -268,10 +287,12 @@ export function NumberField({
             disabled={disabled}
             value={text}
             onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => setDraftText(event.target.value)}
             onBlur={() => {
+              // An unparseable entry commits nothing, so the field reverts to
+              // the committed count rather than writing a salvaged number.
               const parsed = parseCount(text);
-              setDraft(null);
+              setDraftText(null);
               if (parsed !== null) commit(parsed);
             }}
             onKeyDown={(event) => {
