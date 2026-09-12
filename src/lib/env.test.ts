@@ -8,7 +8,7 @@ function validEnv(): Record<string, string> {
     APP_URL: "https://tally.example.com",
     AUTH_SECRET: "0".repeat(32),
     NODE_ENV: "test",
-    MONGODB_URI: "mongodb://user:pass@localhost:27017/tally?replicaSet=rs0&authSource=admin",
+    MONGODB_URI: "mongodb://user:pass@localhost:27017/tally?authSource=admin",
     REDIS_URL: "redis://localhost:6379",
     S3_ENDPOINT: "http://localhost:9000",
     S3_PUBLIC_URL: "https://files.tally.example.com",
@@ -201,10 +201,8 @@ describe("MONGODB_URI", () => {
   }
 
   it("accepts the shapes the dev stack and the deploy actually use", () => {
-    expect(reasonFor("mongodb://localhost:27017/tally?replicaSet=rs0")).toBeUndefined();
-    expect(reasonFor("mongodb://user:pass@mongo:27017/tally?replicaSet=rs0&authSource=admin")).toBe(
-      undefined,
-    );
+    expect(reasonFor("mongodb://localhost:27017/tally")).toBeUndefined();
+    expect(reasonFor("mongodb://user:pass@mongo:27017/tally?authSource=admin")).toBeUndefined();
     expect(reasonFor("mongodb+srv://user:pass@cluster.example.com/tally")).toBeUndefined();
   });
 
@@ -212,7 +210,7 @@ describe("MONGODB_URI", () => {
     // `client.db()` takes the name from the URI. Without one the driver quietly
     // uses "test", and the app runs against an empty database that looks fine.
     expect(reasonFor("mongodb://localhost:27017")).toContain("database name");
-    expect(reasonFor("mongodb://localhost:27017/?replicaSet=rs0")).toContain("database name");
+    expect(reasonFor("mongodb://localhost:27017/?authSource=admin")).toContain("database name");
   });
 });
 
@@ -225,8 +223,8 @@ describe("envVar", () => {
 
   it("validates one variable without demanding the whole environment", () => {
     // `pnpm db:indexes` has to run before the Shopify IDs exist (commit 5).
-    process.env.MONGODB_URI = "mongodb://localhost:27017/tally?replicaSet=rs0";
-    expect(envVar("MONGODB_URI")).toBe("mongodb://localhost:27017/tally?replicaSet=rs0");
+    process.env.MONGODB_URI = "mongodb://localhost:27017/tally";
+    expect(envVar("MONGODB_URI")).toBe("mongodb://localhost:27017/tally");
   });
 
   it("reports a missing key as missing and a bad one as invalid", () => {

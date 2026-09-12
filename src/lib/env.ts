@@ -16,12 +16,12 @@ const envSchema = z.object({
     .min(32, "must be at least 32 characters — generate with `openssl rand -base64 32`"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
-  // mongo — a single-node replica set, for transactions and change streams
+  // mongo — standalone in dev and in production; no transactions, no change streams
   MONGODB_URI: z
     .string()
     .regex(
       /^mongodb(\+srv)?:\/\/[^/?]+\/[^/?]+(\?|$)/,
-      "must include the database name, e.g. mongodb://localhost:27017/tally?replicaSet=rs0",
+      "must include the database name, e.g. mongodb://localhost:27017/tally",
     ),
 
   // queue

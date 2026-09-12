@@ -10,21 +10,16 @@
 name: tally-dev
 
 services:
-  # Mongo has to be a replica set, not a standalone, or there are no
-  # transactions and no change streams. One member is enough for that.
+  # Standalone, to match the Coolify deploy. Nothing in Tally uses a
+  # transaction or a change stream — every write touches one document — and a
+  # local replica set would mean the first code that reached for one passed
+  # here and failed only after deploy.
   #
-  # The member is registered as `localhost:27017` rather than `mongo:27017` on
-  # purpose: the driver reads the member list out of the replica set config and
-  # then connects to what it finds there, so a container hostname would be
-  # unresolvable from the host where `pnpm dev` is running. Anything that later
-  # joins this network talks to it with `directConnection=true`.
-  #
-  # No `--auth`, because enabling it on a replica set also requires a keyFile
-  # with 0600 permissions, which is miserable to mount on Windows and buys
-  # nothing on a port bound to your own machine.
+  # No `--auth`: the port is bound to your own machine and there is nothing in
+  # here worth protecting. Production gets credentials.
   mongo:
     image: mongo:8
-    command: ["--replSet", "rs0", "--bind_ip_all"]
+    command: ["--bind_ip_all"]
     ports:
       - "27017:27017"
     volumes:
@@ -35,29 +30,6 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
-
-  # Runs once and exits. Re-running `up` re-runs it, so it has to be safe on an
-  # already-initiated set — hence checking the status first rather than
-  # initiating blind and swallowing whatever comes back.
-  mongo-init:
-    image: mongo:8
-    depends_on:
-      mongo:
-        condition: service_healthy
-    restart: "no"
-    command:
-      - mongosh
-      - --host
-      - mongo:27017
-      - --quiet
-      - --eval
-      - >
-        try { rs.status(); print("rs0 already initiated"); }
-        catch (error) {
-          if (error.codeName !== "NotYetInitialized") { throw error; }
-          rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] });
-          print("rs0 initiated");
-        }
 
   valkey:
     image: valkey/valkey:8-alpine

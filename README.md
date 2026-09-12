@@ -23,9 +23,11 @@ pnpm db:indexes
 pnpm dev
 ```
 
-The compose stack is Mongo, Valkey and MinIO with the bucket created. Mongo runs as a **single-node
-replica set** — transactions and change streams need one — and without auth, on a port bound to
-your own machine. The defaults in `.env.example` already point at it.
+The compose stack is Mongo, Valkey and MinIO with the bucket created. Mongo runs **standalone and
+without auth**, on a port bound to your own machine. Standalone deliberately matches the deploy:
+every write in Tally touches a single document, so nothing needs a transaction or a change stream,
+and a local replica set would let code that reached for one pass here and fail only after deploy.
+The defaults in `.env.example` already point at it.
 
 Every variable in `.env.example` is required. `src/lib/env.ts` validates them with Zod and the
 server refuses to start if any are missing, printing the full list at once rather than one per
