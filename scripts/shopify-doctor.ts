@@ -1,14 +1,25 @@
 /**
- * `pnpm shopify:doctor` — prove the token works and print the two IDs that
- * have to go into `.env.local`.
+ * `pnpm shopify:doctor` — prove the token works, print the two IDs that have to
+ * go into `.env.local`, and say whether the webhooks are pointing at this app.
  *
- * Read-only. Safe to run against the live store at any time.
+ * Read-only by default, so it stays safe to run against the live store at any
+ * time. `--register` is the one thing here that writes: it creates the four
+ * mirror webhooks, or re-points them when `APP_URL` has moved. That is a real
+ * mutation on a live store, so it is a deliberate flag rather than something
+ * that happens because someone ran a diagnostic.
  */
 import { closeShopifyClient, throttleSnapshot } from "@/lib/shopify/client";
 import { ShopifyGraphQLError, ShopifyHttpError } from "@/lib/shopify/errors";
 import { getShop } from "@/lib/shopify/operations/get-shop";
 import { listLocations } from "@/lib/shopify/operations/list-locations";
 import { isPointOfSale, listPublications } from "@/lib/shopify/operations/list-publications";
+import {
+  createWebhookSubscription,
+  listWebhookSubscriptions,
+  planWebhooks,
+  updateWebhookSubscription,
+} from "@/lib/shopify/operations/webhook-subscriptions";
+import { webhookTopic, WEBHOOK_PATH } from "@/lib/shopify/webhooks";
 
 import { loadEnvFiles } from "./load-env";
 
@@ -20,6 +31,62 @@ function heading(text: string): void {
 function marker(id: string, configured: string | undefined): string {
   if (configured === undefined || configured === "") return "";
   return id === configured ? "  <- already in .env.local" : "";
+}
+
+/**
+ * The four topics that keep the mirror fresh, and whether they are wired up.
+ *
+ * A subscription pointing at an old tunnel is worse than none at all: Shopify
+ * keeps trying, the deliveries fail, and after two days it deletes the
+ * subscription — so this reports the URI it found rather than only whether a
+ * topic exists.
+ */
+async function checkWebhooks(register: boolean): Promise<void> {
+  const uri = `${process.env.APP_URL ?? ""}${WEBHOOK_PATH}`;
+  heading("Webhooks");
+
+  if (!uri.startsWith("https://")) {
+    console.log(`  APP_URL must be an https URL for Shopify to deliver to it.`);
+    console.log(`  Found: ${process.env.APP_URL ?? "(unset)"}`);
+    return;
+  }
+
+  const existing = await listWebhookSubscriptions();
+  const plan = planWebhooks(existing, uri, webhookTopic.options);
+
+  for (const entry of plan) {
+    const state =
+      entry.action === "keep"
+        ? "ok"
+        : entry.action === "create"
+          ? "MISSING"
+          : `points at ${entry.existing?.uri ?? "?"}`;
+    console.log(`  ${entry.topic.padEnd(24)} ${state}`);
+  }
+
+  const changes = plan.filter((entry) => entry.action !== "keep");
+  if (changes.length === 0) {
+    console.log(`
+  All four deliver to ${uri}`);
+    return;
+  }
+
+  if (!register) {
+    console.log(`
+  ${changes.length} to fix. Run \`pnpm shopify:doctor --register\` to point`);
+    console.log(`  them at ${uri}`);
+    return;
+  }
+
+  for (const entry of changes) {
+    if (entry.action === "create") {
+      const created = await createWebhookSubscription(entry.topic, uri);
+      console.log(`  created  ${entry.topic}  ${created.apiVersion.handle}`);
+    } else if (entry.existing !== undefined) {
+      const updated = await updateWebhookSubscription(entry.existing.id, uri);
+      console.log(`  repointed  ${entry.topic}  ${updated.apiVersion.handle}`);
+    }
+  }
 }
 
 async function main(): Promise<void> {
@@ -63,6 +130,8 @@ async function main(): Promise<void> {
     console.log(`  SHOPIFY_POS_PUBLICATION_ID=<no Point of Sale channel found>`);
     console.log(`  Tally publishes to Point of Sale only. Add the channel to the store first.`);
   }
+
+  await checkWebhooks(process.argv.includes("--register"));
 
   const throttle = throttleSnapshot();
   if (throttle !== undefined) {

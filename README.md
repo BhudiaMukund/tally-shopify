@@ -82,12 +82,48 @@ not invalidate a token already issued, so `requireUser()` re-reads the `users`
 row on every guarded page and route. Route protection in `src/proxy.ts` is a
 cheap cookie check; the guards in `src/lib/auth/guards.ts` are the real one.
 
+## Keeping the catalogue mirror fresh
+
+`products_mirror` is a cache of Shopify, one document per variant, so a scan can
+paint in a couple of milliseconds while the live `productVariants(query:
+"barcode:…")` call is still in flight. It is never the source of a write.
+
+```bash
+pnpm mirror:backfill              # the initial snapshot, via bulkOperationRunQuery
+pnpm mirror:backfill --dry-run    # read and report, write nothing
+pnpm barcodes:audit               # missing, malformed and colliding barcodes
+pnpm barcodes:audit --csv         # the same rows as a worklist
+```
+
+After the snapshot, four webhooks keep it current: `products/create`,
+`products/update`, `products/delete` and `inventory_levels/update`, all
+delivered to `POST /api/webhooks/shopify`. That route is reachable without a
+session — Shopify has no cookie to send — and the HMAC over the raw body is its
+authentication. A mismatch is a 401 and nothing is written.
+
+```bash
+pnpm shopify:doctor               # reports which of the four are wired up
+pnpm shopify:doctor --register    # creates or re-points them at APP_URL
+```
+
+`--register` is the only thing in the doctor that writes. `APP_URL` has to be an
+https address Shopify can reach, so registering against a local dev server means
+running a tunnel and pointing `APP_URL` at it first.
+
+`pnpm barcodes:audit` is the gate on putting the phone in front of staff: it
+exits non-zero while anything is missing, malformed, or sharing a barcode with a
+different product. A barcode shared across variants of _one_ product is a size
+run and is expected; the same code on two products is a data error the till
+cannot resolve.
+
 ## Connecting a store
 
 ```bash
 pnpm shopify:install    # prints SHOPIFY_ADMIN_TOKEN
 pnpm shopify:doctor     # prints SHOPIFY_LOCATION_ID and SHOPIFY_POS_PUBLICATION_ID
 pnpm taxonomy:sync      # fills the taxonomy collection from the live catalogue
+pnpm mirror:backfill    # fills products_mirror from the live catalogue
+pnpm barcodes:audit     # every variant whose barcode would fail a scan
 ```
 
 Every run prints the authorize URL in full before it touches the browser, so if
