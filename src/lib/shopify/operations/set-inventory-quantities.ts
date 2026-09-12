@@ -4,23 +4,38 @@ import { shopifyRequest, type ShopifyEndpoint } from "../client";
 
 /**
  * Step 3 of the inventory write (BUILD_PLAN §3), and the one CLAUDE.md §8 is
- * about: `compareQuantity` on every call, never `ignoreCompareQuantity`. A POS
- * sale landing between the phone's last read and this call must fail loudly,
- * not overwrite silently.
+ * about: a compare-and-set on every call, never an unconditional overwrite. A
+ * POS sale landing between the phone's last read and this call must fail
+ * loudly, not overwrite silently.
+ *
+ * The wire field for that compare-and-set is `changeFromQuantity`, not
+ * `compareQuantity` — confirmed by introspecting `InventoryQuantityInput`
+ * directly against a live store on this pinned API version, after a
+ * production write failed with "Field is not defined on
+ * InventoryQuantityInput". The published docs for this mutation describe a
+ * `compareQuantity` field that this schema does not actually have; take that
+ * page's field names as a lead worth verifying by introspection, not as
+ * ground truth, the next time this mutation's shape needs rechecking. Our own
+ * parameter stays named `compareQuantity` — that is CLAUDE.md §8's and
+ * `apply.ts`'s vocabulary for the concept — and is mapped to the real field
+ * name only at the point this function builds the request.
  *
  * As of API version 2026-04 this mutation requires an idempotency key via the
  * `@idempotent` directive — not an input field, a directive argument on the
- * field itself. `scanId` is already the client-generated idempotency key for
- * the whole inventory path (CLAUDE.md §6, `inventory_events.scanId`), so it is
- * reused here rather than minting a second one: a retry that reaches Shopify
- * with the same `scanId` is deduplicated by Shopify itself, which is what
- * makes it safe for `src/lib/inventory/apply.ts` to re-attempt this call after
- * a crash between the mutation succeeding and our own event being finalised.
+ * field itself (confirmed separately via `__schema.directives`). `scanId` is
+ * already the client-generated idempotency key for the whole inventory path
+ * (CLAUDE.md §6, `inventory_events.scanId`), so it is reused here rather than
+ * minting a second one: a retry that reaches Shopify with the same `scanId`
+ * is deduplicated by Shopify itself, which is what makes it safe for
+ * `src/lib/inventory/apply.ts` to re-attempt this call after a crash between
+ * the mutation succeeding and our own event being finalised.
  *
  * userErrors carry a `code` here (unlike the plain `UserError` on the other two
- * steps) — `COMPARE_QUANTITY_STALE` / `CHANGE_FROM_QUANTITY_STALE` is the
- * conflict apply.ts turns into a 409, and is not treated as a hard failure the
- * way every other code is.
+ * steps) — `CHANGE_FROM_QUANTITY_STALE` is the conflict apply.ts turns into a
+ * 409, and is not treated as a hard failure the way every other code is.
+ * `COMPARE_QUANTITY_STALE` is kept alongside it defensively, in case a store
+ * or API version that does carry the `compareQuantity` field this one lacks
+ * ever exercises this same code path.
  *
  * https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/inventorySetQuantities
  */
@@ -107,7 +122,10 @@ export async function setInventoryQuantities({
       input: {
         name: QUANTITY_NAME,
         reason: REASON,
-        quantities: [{ inventoryItemId, locationId, quantity, compareQuantity }],
+        // `changeFromQuantity` is the real field name — see the module doc.
+        quantities: [
+          { inventoryItemId, locationId, quantity, changeFromQuantity: compareQuantity },
+        ],
       },
       idempotencyKey,
     },

@@ -215,6 +215,17 @@ export async function applyInventoryWrite(
 
     if (result.userErrors.length > 0) {
       const message = result.userErrors.map((error) => error.message).join("; ");
+      // Unlike the exception path below, this is Shopify answering cleanly —
+      // nothing throws, so without this the only trace of a 422 was the
+      // route's own `status: "failed"` line, with no way to tell a rejected
+      // quantity from a stale idempotency key from an item Shopify refuses to
+      // adjust at all. That gap is exactly what made this hard to diagnose.
+      log.warn("inventory.rejected", {
+        scanId: request.scanId,
+        variantId: request.variantId,
+        codes: result.userErrors.map((error) => error.code ?? "(none)"),
+        message,
+      });
       await finalize(request.scanId, "failed", { error: message });
       return { status: "failed", message };
     }
