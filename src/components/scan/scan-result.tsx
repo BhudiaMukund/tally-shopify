@@ -13,6 +13,7 @@ import {
 import { distinctProductCount, reconcileProducts } from "@/lib/scan/reconcile-matches";
 
 import { CountScreen } from "./count-screen";
+import { PendingDraft } from "./pending-draft";
 import { ProductChooser } from "./product-chooser";
 import { VariantChooser } from "./variant-chooser";
 
@@ -113,23 +114,17 @@ export function ScanResult({ lookup, onDone }: ScanResultProps) {
 
   if (lookup.state === "pending") {
     const [pending] = lookup.pending;
-    return (
-      <div className="flex flex-col gap-3">
-        <p className="text-ink-soft text-sm">Already captured — not in Shopify yet</p>
-        <p className="text-ink font-medium capitalize">
-          {pending?.status.replace(/_/g, " ") ?? "In review"}
-        </p>
-        {pending?.error !== null && pending?.error !== undefined ? (
-          <p className="text-stop text-sm">{pending.error.message}</p>
-        ) : null}
-        <p className="text-ink-soft text-sm">
-          Adding to this item&rsquo;s count is not built yet — capturing it again is not needed.
-        </p>
-        <Button variant="secondary" size="touch" fullWidth onClick={onDone}>
-          Scan again
-        </Button>
-      </div>
-    );
+    if (pending === undefined) {
+      return (
+        <div className="flex flex-col gap-3">
+          <p className="text-ink">Something is already on its way for this barcode.</p>
+          <Button variant="secondary" size="touch" fullWidth onClick={onDone}>
+            Scan again
+          </Button>
+        </div>
+      );
+    }
+    return <PendingDraft pending={pending} barcode={lookup.barcode} onDone={onDone} />;
   }
 
   const allMatched = allVariants(products);

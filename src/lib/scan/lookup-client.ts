@@ -38,8 +38,9 @@ export interface LookupProduct {
 export interface LookupPendingParent {
   productId: string;
   productTitle: string;
+  posOnly: boolean;
   optionName: string;
-  optionValue: string;
+  optionValue: string | null;
 }
 
 export interface LookupPending {
@@ -56,6 +57,9 @@ export interface LookupPending {
   siblingOf: string | null;
   parent: LookupPendingParent | null;
   error: { message: string; step: string | null; at: string } | null;
+  rejectedBy: string | null;
+  rejectedReason: string | null;
+  rejectedAt: string | null;
 }
 
 export type LookupState = "invalid" | "match" | "pending" | "new";

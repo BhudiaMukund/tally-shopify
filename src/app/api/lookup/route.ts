@@ -25,6 +25,7 @@ function serialisePending(pending: PendingMatch) {
     ...pending,
     capturedAt: pending.capturedAt.toISOString(),
     error: pending.error === null ? null : { ...pending.error, at: pending.error.at.toISOString() },
+    rejectedAt: pending.rejectedAt === null ? null : pending.rejectedAt.toISOString(),
   };
 }
 

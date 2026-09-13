@@ -33,10 +33,18 @@ export const draftParentSchema = z.object({
   productId: gid("Product"),
   productTitle: z.string().min(1),
   posOnly: z.boolean(),
-  /** From the synced option-name list, so the AI proposes `Size`, not `Box Dimension`. */
+  /**
+   * From the synced option-name list, so the AI proposes `Size`, not `Box
+   * Dimension`. A structural pick, not a content guess — staff choose it at
+   * capture time, before the AI exists to propose anything.
+   */
   optionName: z.string().min(1),
-  /** AI-proposed, admin-confirmed. Never applied without review. */
-  optionValue: z.string().min(1),
+  /**
+   * AI-proposed, admin-confirmed (§2). Null at intake — nothing has read the
+   * packaging yet — and filled in by enrichment (commit 12) or a reviewer
+   * (commit 13). Never applied without review.
+   */
+  optionValue: z.string().min(1).nullable(),
   /**
    * True when the parent is still a single `Default Title` variant, so publishing
    * has to name that existing variant as well as create the new one. §3 calls
@@ -185,6 +193,16 @@ const draftBaseSchema = z.object({
   status: draftStatus,
   shopify: draftShopifySchema.optional(),
   error: draftErrorSchema.optional(),
+  /**
+   * Set by the review console (commit 13) — nothing before it populates
+   * these. Declared now, alongside every other collection field, so the
+   * pending-draft screen (§9) has something to bind to the moment a rejection
+   * exists, rather than the schema growing a rejection shape only once the
+   * console that writes it ships.
+   */
+  rejectedBy: objectId.optional(),
+  rejectedReason: z.string().min(1).optional(),
+  rejectedAt: z.date().optional(),
   attempts: z.number().int().nonnegative().default(0),
   updatedAt: z.date(),
 });
@@ -224,4 +242,17 @@ export const pendingDraftStatuses = [
   "pending_review",
   "failed",
   "rejected",
+] as const satisfies readonly DraftStatus[];
+
+/**
+ * The narrower set that may still be *written to* — add to count, add
+ * photos. `failed` and `rejected` are pending for lookup purposes (§9's
+ * table), but each has its own distinct action (retry, recapture) rather
+ * than accepting a count or a photo appended to a draft that isn't going
+ * anywhere in its current state.
+ */
+export const writablePendingDraftStatuses = [
+  "queued",
+  "enriching",
+  "pending_review",
 ] as const satisfies readonly DraftStatus[];
