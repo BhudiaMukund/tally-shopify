@@ -6,7 +6,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tests/**/*.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "worker/**/*.test.ts",
+      "tests/**/*.test.ts",
+    ],
   },
   resolve: {
     alias: {

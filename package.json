@@ -10,6 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "worker": "tsx worker/index.ts",
     "db:indexes": "tsx scripts/ensure-indexes.ts",
     "garage:setup": "tsx scripts/garage-setup.ts",
     "create-user": "tsx scripts/create-user.ts",

@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1
+
+# Worker service (BUILD_PLAN §11) — a separate container from `web`, sharing
+# `src/lib` and nothing else, deployed as its own Coolify resource.
+#
+# Unlike `Dockerfile`, there is no build step: nothing in this repo compiles a
+# standalone TS entrypoint to JS (`scripts/*.ts` all run via `tsx`, unchanged
+# since commit 1), so this doesn't introduce one just for the worker. The
+# tradeoff is a heavier image — `tsx` is a devDependency, so this installs
+# every dependency rather than a `--prod` subset. Simpler than it is optimal;
+# revisit at commit 17 when the deploy story gets hardened for real.
+
+ARG NODE_VERSION=22-alpine
+
+
+# ---- deps ---------------------------------------------------------------
+FROM node:${NODE_VERSION} AS deps
+WORKDIR /app
+
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable pnpm
+
+COPY package.json pnpm-lock.yaml ./
+# --ignore-scripts: husky's `prepare` has no .git directory to hook into here.
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+
+# ---- runner -------------------------------------------------------------
+FROM node:${NODE_VERSION} AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable pnpm
+
+# `node` (uid 1000) already exists in the base image — no useradd needed.
+USER node
+
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package.json tsconfig.json ./
+COPY --chown=node:node worker ./worker
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node src ./src
+
+# No HTTP surface to heathcheck — Coolify's own "container running" signal is
+# what this depends on until there's a reason to add more (a liveness file, a
+# tiny status port). `/api/health`'s queue-depth figures are what actually
+# say whether this process is keeping up.
+CMD ["pnpm", "worker"]

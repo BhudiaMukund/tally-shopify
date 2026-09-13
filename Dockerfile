@@ -61,12 +61,10 @@ COPY --from=builder --chown=node:node /app/public ./public
 
 EXPOSE 3000
 
-# /login rather than /: every other route now redirects to it, and a health
-# check that depends on following a redirect is one wget flag away from
-# reporting a container as unhealthy while it serves perfectly well.
-# TODO(commit 11): repoint at /api/health once it reports Mongo, Redis, MinIO and
-# queue depth. Until then this only proves the server is answering.
+# Reports Mongo, Redis, Garage and Shopify reachability plus queue depth
+# (commit 11) — a stronger signal than "the server answers a GET", which is
+# all /login proved before this route existed.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/login || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["node", "server.js"]
