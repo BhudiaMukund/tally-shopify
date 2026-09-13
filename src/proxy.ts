@@ -37,12 +37,14 @@ export const config = {
     /*
      * Everything except:
      * - api/auth  (Auth.js's own endpoints — protecting them locks out login)
+     * - api/health  (Coolify's healthcheck has no session — commit 11)
      * - _next/static, _next/image  (build output)
      * - the metadata and icon files served from the app root
      *
-     * Our own /api routes are deliberately NOT excluded: /api/inventory writes
-     * to a live store and must not be reachable without a session.
+     * Our own /api routes are otherwise deliberately NOT excluded: /api/inventory
+     * writes to a live store and must not be reachable without a session.
+     * /api/health carries no such risk — it only reports reachability.
      */
-    "/((?!api/auth|_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|manifest.webmanifest|robots.txt|sitemap.xml).*)",
+    "/((?!api/auth|api/health|_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|manifest.webmanifest|robots.txt|sitemap.xml).*)",
   ],
 };
