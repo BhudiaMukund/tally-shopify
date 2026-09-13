@@ -1,6 +1,7 @@
 import IORedis from "ioredis";
 
 import { envVar } from "@/lib/env";
+import { errorMessage, log } from "@/lib/log";
 
 /**
  * The Redis connection BullMQ's producers share.
@@ -14,6 +15,14 @@ import { envVar } from "@/lib/env";
  * up and throws mid-`BRPOPLPUSH`. It applies just as much to a producer-only
  * connection as to a worker's, so it is set here rather than only when
  * commit 11 adds the consumer.
+ *
+ * ioredis is an `EventEmitter`, and Node throws on an `"error"` event with no
+ * listener attached — so a DNS blip or a dropped connection would otherwise
+ * crash the process (or spam raw stack traces) instead of just failing the
+ * next command. Found in production: a misconfigured `REDIS_URL` produced a
+ * wall of unhandled `getaddrinfo EAI_AGAIN` traces rather than one clean log
+ * line. ioredis keeps retrying on its own regardless — this only stops the
+ * error from being unhandled.
  */
 
 type ConnectionCache = { client?: IORedis };
@@ -26,7 +35,15 @@ function cache(): ConnectionCache {
 
 export function getRedisConnection(): IORedis {
   const store = cache();
-  store.client ??= new IORedis(envVar("REDIS_URL"), { maxRetriesPerRequest: null });
+  if (store.client === undefined) {
+    const client = new IORedis(envVar("REDIS_URL"), { maxRetriesPerRequest: null });
+    // ioredis retries on its own — this only turns an unhandled "error" event
+    // (which Node throws on) into a log line.
+    client.on("error", (error) => {
+      log.warn("redis.connection_error", { message: errorMessage(error) });
+    });
+    store.client = client;
+  }
   return store.client;
 }
 
