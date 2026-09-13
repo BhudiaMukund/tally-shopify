@@ -2,7 +2,12 @@ import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
 
 import { barcodeDigits, gtin, money, objectId } from "./common";
-import { draftSchema, pendingDraftStatuses, productEditsSchema } from "./drafts";
+import {
+  draftSchema,
+  pendingDraftStatuses,
+  productEditsSchema,
+  writablePendingDraftStatuses,
+} from "./drafts";
 import { inventoryEventSchema } from "./inventory-events";
 import { productMirrorSchema } from "./products-mirror";
 import { userSchema } from "./users";
@@ -178,6 +183,40 @@ describe("draftSchema", () => {
     expect(pendingDraftStatuses).toContain("rejected");
     expect(pendingDraftStatuses).not.toContain("published");
     expect(pendingDraftStatuses).not.toContain("approved");
+  });
+
+  it("keeps rejected and failed pending for lookup but not writable", () => {
+    // A rejected or failed draft is still *shown* on a scan (it's pending),
+    // but it has its own action (recapture, retry) — add-to-count and
+    // add-photos must not accept a write against either.
+    expect(writablePendingDraftStatuses).not.toContain("rejected");
+    expect(writablePendingDraftStatuses).not.toContain("failed");
+    for (const status of writablePendingDraftStatuses) {
+      expect(pendingDraftStatuses).toContain(status);
+    }
+  });
+
+  it("accepts a variant draft with no option value yet — nothing has read the packaging at intake", () => {
+    const draft = draftSchema.parse({
+      ...base(),
+      kind: "new_variant",
+      parent: { ...parent, optionValue: null },
+    });
+    expect(draft.kind).toBe("new_variant");
+    if (draft.kind === "new_variant") expect(draft.parent.optionValue).toBeNull();
+  });
+
+  it("round-trips a rejection, even though nothing writes one before commit 13", () => {
+    const rejectedBy = new ObjectId();
+    const draft = draftSchema.parse({
+      ...base(),
+      kind: "new_product",
+      status: "rejected",
+      rejectedBy,
+      rejectedReason: "Blurry photos — recapture in better light.",
+      rejectedAt: new Date(),
+    });
+    expect(draft.rejectedReason).toBe("Blurry photos — recapture in better light.");
   });
 });
 

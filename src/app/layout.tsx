@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
+import { RegisterServiceWorker } from "@/components/pwa/register-sw";
+
 import "./globals.css";
 
 /**
@@ -47,6 +49,18 @@ export const metadata: Metadata = {
   title: "Tally",
   description: "Stock and product intake",
   applicationName: "Tally",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+  },
+  // iOS ignores the manifest for `display: standalone` — these are what
+  // actually get it there when someone adds the app to the home screen.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Tally",
+  },
 };
 
 export const viewport: Viewport = {
@@ -61,7 +75,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${bricolage.variable} ${plexSans.variable} ${plexMono.variable} h-full antialiased`}
     >
-      <body className="bg-paper text-ink flex min-h-full flex-col">{children}</body>
+      <body className="bg-paper text-ink flex min-h-full flex-col">
+        {children}
+        <RegisterServiceWorker />
+      </body>
     </html>
   );
 }

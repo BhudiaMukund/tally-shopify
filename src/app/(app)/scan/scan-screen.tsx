@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { DebugPanel } from "@/components/scan/debug-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { usePendingIntakeCount } from "@/lib/intake/use-pending-intake-count";
 import {
   getDebugPreference,
   getDebugPreferenceOnServer,
@@ -110,6 +111,7 @@ export function ScanScreen({ engine, debug }: ScanScreenProps) {
     getDebugPreference,
     getDebugPreferenceOnServer,
   );
+  const pendingCount = usePendingIntakeCount();
 
   /**
    * The camera starts on its own. Someone who opened /scan wants to scan, and
@@ -175,12 +177,25 @@ export function ScanScreen({ engine, debug }: ScanScreenProps) {
       />
 
       <header className="relative z-20 flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <Link
-          href="/"
-          className="font-display -m-2 p-2 text-xl font-bold text-white font-stretch-95%"
-        >
-          Tally
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/"
+            className="font-display -m-2 p-2 text-xl font-bold text-white font-stretch-95%"
+          >
+            Tally
+          </Link>
+          {pendingCount > 0 ? (
+            <span
+              // Captures waiting to leave the phone's own offline queue
+              // (BUILD_PLAN §10) — not a notification count, so it never
+              // grows past what the phone itself is holding onto.
+              aria-label={`${pendingCount} ${pendingCount === 1 ? "capture" : "captures"} waiting to sync`}
+              className="bg-accent flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 font-mono text-xs font-semibold text-white tabular-nums"
+            >
+              {pendingCount}
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={toggleDebug}

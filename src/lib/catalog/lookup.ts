@@ -51,16 +51,20 @@ export interface PendingMatch {
   parent: {
     productId: string;
     productTitle: string;
+    posOnly: boolean;
     optionName: string;
-    optionValue: string;
+    optionValue: string | null;
   } | null;
-  /**
-   * Why a `failed` draft failed, so the phone can offer a retry rather than
-   * silently starting a second draft. A `rejected` draft's reason and reviewer
-   * arrive with the review console at commit 12 — there is nothing to read them
-   * from yet, and inventing the fields here would mean two shapes to merge.
-   */
+  /** Why a `failed` draft failed, so the phone can offer a retry rather than silently starting a second draft. */
   error: { message: string; step: string | null; at: Date } | null;
+  /**
+   * Set by the review console (commit 13) — always null before then. Read
+   * here anyway so a `rejected` draft can warn loudly the moment that console
+   * ships, rather than the pending screen growing a second shape later.
+   */
+  rejectedBy: string | null;
+  rejectedReason: string | null;
+  rejectedAt: Date | null;
 }
 
 export type LiveResult =
@@ -133,6 +137,7 @@ function pendingMatchOf(draft: WithId<Draft>): PendingMatch {
         : {
             productId: draft.parent.productId,
             productTitle: draft.parent.productTitle,
+            posOnly: draft.parent.posOnly,
             optionName: draft.parent.optionName,
             optionValue: draft.parent.optionValue,
           },
@@ -140,6 +145,9 @@ function pendingMatchOf(draft: WithId<Draft>): PendingMatch {
       draft.error === undefined
         ? null
         : { message: draft.error.message, step: draft.error.step ?? null, at: draft.error.at },
+    rejectedBy: draft.rejectedBy?.toHexString() ?? null,
+    rejectedReason: draft.rejectedReason ?? null,
+    rejectedAt: draft.rejectedAt ?? null,
   };
 }
 
